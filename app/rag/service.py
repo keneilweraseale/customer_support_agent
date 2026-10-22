@@ -1,0 +1,125 @@
+import logging
+import os
+from dataclasses import dataclass
+
+from app.rag.generation import (
+    AnswerGenerator,
+    GenerationError,
+    GroqGroundedAnswerGenerator,
+)
+from app.rag.providers import (
+    ProviderConfigurationError,
+    embedder_from_environment,
+)
+from app.rag.retrieval import HybridPolicyRetriever, HybridSearchResult
+from app.storage.json_store import JsonRepository
+logger = logging.getLogger(__name__)
+NO_EVIDENCE_ANSWER = (
+    "I couldn’t find enough information in the approved policy documents to verify "
+    "that. Please contact support for help."
+)
+
+
+@dataclass(frozen=True)
+class PolicyAnswer:
+    answer: str
+    route: str
+    sources: list[dict[str, str]]
+    retrieval: HybridSearchResult
+
+
+class PolicyAnswerService:
+    def __init__(
+        self,
+        retriever: HybridPolicyRetriever,
+        generator: AnswerGenerator,
+    ) -> None:
+        self._retriever = retriever
+        self._generator = generator
+
+    def answer(
+        self,
+        question: str,
+        search_result: HybridSearchResult | None = None,
+    ) -> PolicyAnswer:
+        search_result = search_result or self._retriever.search(question)
+        if not search_result.results:
+            return PolicyAnswer(
+                answer=NO_EVIDENCE_ANSWER,
+                route="rag",
+                sources=[],
+                retrieval=search_result,
+            )
+
+        try:
+            answer = self._generator.generate(question, search_result.results)
+        except GenerationError:
+            logger.exception("Grounded policy answer generation failed.")
+            answer = (
+                "I found relevant approved policy information but can’t generate a "
+                "reliable answer right now. Please contact support for help."
+            )
+
+        source_map: dict[str, dict[str, str]] = {}
+        for result in search_result.results:
+            chunk = result.chunk
+            source_map[chunk.chunk_id] = {
+                "document_id": chunk.document_id,
+                "title": chunk.title,
+                "chunk_id": chunk.chunk_id,
+            }
+        return PolicyAnswer(
+            answer=answer,
+            route="rag",
+            sources=list(source_map.values()),
+            retrieval=search_result,
+        )
+
+
+def answer_policy_question(question: str) -> PolicyAnswer:
+    repository = JsonRepository()
+    documents = repository.get_policy_documents()
+    chunks = repository.get_policy_chunks()
+    has_approved_chunks = any(
+        chunk.metadata.get("approved") is True
+        and any(
+            document.document_id == chunk.document_id
+            and document.approved
+            and chunk.metadata.get("updated_at") == document.updated_at.isoformat()
+            for document in documents
+        )
+        for chunk in chunks
+    )
+    if not has_approved_chunks:
+        return PolicyAnswer(
+            answer=NO_EVIDENCE_ANSWER,
+            route="rag",
+            sources=[],
+            retrieval=HybridSearchResult(
+                results=[],
+                vector_available=False,
+                vector_error="no_valid_approved_chunks",
+                bm25_available=False,
+            ),
+        )
+
+    embedder = embedder_from_environment(required=False)
+    retriever = HybridPolicyRetriever(repository, embedder)
+    search_result = retriever.search(question)
+    if not search_result.results:
+        return PolicyAnswer(
+            answer=NO_EVIDENCE_ANSWER,
+            route="rag",
+            sources=[],
+            retrieval=search_result,
+        )
+
+    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+    groq_model = os.environ.get("GROQ_MODEL", "").strip()
+    if not groq_key or not groq_model:
+        raise ProviderConfigurationError(
+            "GROQ_API_KEY and GROQ_MODEL are required to generate an answer."
+        )
+
+    generator = GroqGroundedAnswerGenerator(groq_key, groq_model)
+    return PolicyAnswerService(retriever, generator).answer(question, search_result)

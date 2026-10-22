@@ -1,0 +1,26 @@
+[
+  {
+    "document_id": "demo-refund-policy",
+    "title": "Fictional Demo Refund Guidance",
+    "category": "refunds",
+    "source": "policies/demo-refund-policy.md",
+    "approved": true,
+    "updated_at": "2026-10-22T00:00:00Z"
+  },
+  {
+    "document_id": "demo-contact-information",
+    "title": "Fictional Demo Contact Information",
+    "category": "contact",
+    "source": "policies/demo-contact-information.md",
+    "approved": true,
+    "updated_at": "2026-10-22T00:00:00Z"
+  },
+  {
+    "document_id": "demo-unapproved-shipping-draft",
+    "title": "Unapproved Demo Shipping Draft",
+    "category": "shipping",
+    "source": "policies/demo-unapproved-shipping-draft.md",
+    "approved": false,
+    "updated_at": "2026-10-22T00:00:00Z"
+  }
+]

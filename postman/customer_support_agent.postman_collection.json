@@ -1,0 +1,186 @@
+{
+  "info": {
+    "name": "Customer Support AI Agent",
+    "description": "GET /health, POST /api/chat, POST /api/demo/verify, and cancellation confirmation are implemented. Demo IDs and tokens are for fictional local data only and are not production authentication.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "authorizationToken",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "description": "Implemented in Phase 1.",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/health"
+      }
+    },
+    {
+      "name": "Verify demo customer",
+      "description": "Issues a 15-minute token for a seeded fictional customer ID. This is not real authentication.",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('authorizationToken', body.authorization_token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customer_id\": \"CUS-DEMO-001\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/demo/verify"
+      }
+    },
+    {
+      "name": "Chat demo",
+      "description": "Routes policy questions to grounded RAG and supported current-data requests to tools. Add {{authorizationToken}} for order-related requests. For cancellation, first check eligibility, then explicitly confirm using the separate endpoint.",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"What is your refund policy?\",\n  \"conversation_id\": \"demo-session-001\",\n  \"authorization_token\": null\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/chat"
+      }
+    },
+    {
+      "name": "Order status via chat",
+      "description": "Requires a token from Verify demo customer and the matching seeded order.",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"Where is order ORD-1001?\",\n  \"authorization_token\": \"{{authorizationToken}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/chat"
+      }
+    },
+    {
+      "name": "Order status (planned)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/orders/ORD-1001"
+      }
+    },
+    {
+      "name": "Delivery status (planned)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/orders/ORD-1001/delivery"
+      }
+    },
+    {
+      "name": "Payment status (planned)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/orders/ORD-1001/payment"
+      }
+    },
+    {
+      "name": "Cancellation eligibility (planned)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customer_id\": \"CUS-001\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/orders/ORD-1001/cancellation-check"
+      }
+    },
+    {
+      "name": "Confirm cancellation (Phase 7)",
+      "description": "Run Chat demo with a cancellation request first. Copy actions[0].confirmation_token into this request, then explicitly send it.",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-cancel-attempt-0001",
+            "description": "Keep this key unchanged when retrying the same confirmation."
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"authorization_token\": \"{{authorizationToken}}\",\n  \"confirmation_token\": \"replace-with-server-issued-token\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/orders/ORD-1001/cancel"
+      }
+    },
+    {
+      "name": "Product availability (planned)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/products/PROD-001/availability"
+      }
+    }
+  ]
+}

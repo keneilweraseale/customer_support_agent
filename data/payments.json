@@ -1,0 +1,18 @@
+[
+  {
+    "payment_id": "PAY-1001",
+    "order_id": "ORD-1001",
+    "payment_status": "paid",
+    "provider_reference": "PAYMENT-DEMO-1001",
+    "error_code": null,
+    "updated_at": "2026-10-20T10:16:00Z"
+  },
+  {
+    "payment_id": "PAY-1002",
+    "order_id": "ORD-1002",
+    "payment_status": "failed",
+    "provider_reference": "PAYMENT-DEMO-1002",
+    "error_code": "DEMO_PAYMENT_DECLINED",
+    "updated_at": "2026-10-18T09:01:00Z"
+  }
+]
