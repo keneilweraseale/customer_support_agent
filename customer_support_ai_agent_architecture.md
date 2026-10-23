@@ -33,6 +33,10 @@ flowchart TD
     ROUTER -->|Policy or FAQ question| RAG[RAG Service]
     ROUTER -->|Order, delivery, payment, stock| TOOLS[LangChain Tools]
     ROUTER -->|Mixed product question| BOTH[RAG + relevant tools]
+    ROUTER <--> STM[Short-term conversation memory]
+    TOOLS --> LTM[Long-term cancellation history / audit records]
+    STM --> JSON
+    LTM --> JSON
     RAG --> INGEST[Policy ingestion pipeline]
     RAG --> RET[Hybrid retrieval: vector + BM25]
     INGEST --> DOCS[Approved source documents]
@@ -53,15 +57,16 @@ flowchart TD
 ### Request path in plain English
 
 1. The customer types a question into the React chatbot.
-2. React state manages the conversation; the frontend sends the message and conversation context to the Python API as JSON.
-3. The backend validates the request and checks whether the requested information/action requires customer verification.
-4. The agent chooses the appropriate path:
+2. React state manages the visible conversation; the frontend sends the message, `conversation_id`, and relevant recent context to the Python API as JSON. The backend is responsible for trusted memory storage and retrieval.
+3. The backend cleans and normalises the message, then loads only the short-term memory relevant to that conversation. For a cancellation, it also checks the order/action records and writes a durable cancellation record after the outcome is known.
+4. The backend validates the request and checks whether the requested information/action requires customer verification.
+5. The agent chooses the appropriate path:
    - **RAG** for policies and approved guidance.
    - **LangChain tool** for current order, delivery, payment, stock, or review data.
    - **RAG + tools** for questions needing both policy context and current data.
-5. RAG retrieves relevant chunks using **vector similarity and BM25 keyword search**.
-6. The generation step creates an answer from retrieved evidence and/or tool results. If evidence is missing, the agent must say so rather than inventing an answer.
-7. FastAPI returns a JSON response. The chat UI displays the answer and any next action, such as asking the customer to confirm a cancellation.
+6. RAG retrieves relevant chunks using **vector similarity and BM25 keyword search**.
+7. The generation step creates an answer from retrieved evidence and/or tool results. If evidence is missing, the agent must say so rather than inventing an answer.
+8. FastAPI returns a JSON response. The chat UI displays the answer and any next action, such as asking the customer to confirm a cancellation.
 
 ## 3. Explicit model and retrieval choices
 
@@ -308,7 +313,8 @@ All endpoints return JSON. Use consistent HTTP status codes and response shapes.
 {
   "message": "What is your refund policy?",
   "conversation_id": "demo-session-001",
-  "authorization_token": null
+  "authorization_token": null,
+  "memory_enabled": true
 }
 ```
 
@@ -327,7 +333,11 @@ All endpoints return JSON. Use consistent HTTP status codes and response shapes.
     }
   ],
   "actions": [],
-  "needs_confirmation": false
+  "needs_confirmation": false,
+  "memory": {
+    "short_term_used": true,
+    "long_term_record_created": false
+  }
 }
 ```
 
@@ -364,6 +374,8 @@ Use one JSON file per data category. Store arrays of objects where each object r
 | `reviews.json` | Demo reviews | `review_id`, `product_id`, `rating`, `review_text`, `created_at` |
 | `policy_documents.json` | Original approved documents/metadata | `document_id`, `title`, `category`, `source`, `text`, `approved`, `updated_at` |
 | `policy_chunks.json` | Search-ready text chunks | `chunk_id`, `document_id`, `title`, `text`, `embedding`, `metadata`, `token_count` |
+| `conversation_memory.json` | Short-term context for active conversations; expires automatically | `conversation_id`, `customer/session reference`, `recent_turns`, `summary`, `updated_at`, `expires_at` |
+| `cancellation_history.json` | Long-term, auditable record of cancellation requests and outcomes | `event_id`, `order_id`, `customer_id`, `reason`, `requested_at`, `outcome`, `outcome_at`, `actor`, `request_id` |
 
 ### 7.2 Relationships
 
@@ -486,7 +498,92 @@ The generation prompt must instruct the model to:
 
 The model's answer is not itself proof that an action succeeded. For changes such as cancellation, use the tool's verified result.
 
-## 10. Security, privacy, reliability and quality
+## 10. Memory design: short-term conversation context and long-term cancellation history
+
+Memory has two different jobs in this project. Keep them separate so the assistant can follow a conversation without treating every chat message as permanent customer history.
+
+### 10.1 Short-term memory — current conversation
+
+**Purpose:** help the assistant understand follow-up messages and avoid asking the customer to repeat information during the same support conversation.
+
+It can retain limited context for intents such as:
+- checking an order's status;
+- identifying delivery delays;
+- checking payment issues;
+- checking product availability or product details;
+- explaining refund, shipping, exchange, return, warranty, and ordering policies;
+- answering review or contact-information questions;
+- clarifying which order or product the customer is referring to.
+
+**Suggested contents**
+- `conversation_id` and an authenticated customer/session reference where available;
+- a bounded set of recent user/assistant turns or a concise conversation summary;
+- the current intent and non-sensitive entities needed for follow-up, such as an order reference or product ID;
+- the last tool result's status and timestamp, where useful;
+- `created_at`, `updated_at`, and `expires_at`.
+
+**Rules**
+1. Keep memory scoped to one conversation and, where authenticated, its owner. A conversation ID alone is not proof of identity or permission.
+2. Apply a configurable time-to-live (TTL), for example 30 minutes of inactivity for the demo. Treat this as a proposed default to confirm, not a business requirement.
+3. Bound the number/size of stored turns and summarise older turns when needed.
+4. Do not store passwords, full payment-card details, access tokens, or unnecessary sensitive information.
+5. Before answering a follow-up, use memory to resolve references such as “What about the delivery?”; then verify current operational facts with the relevant tool instead of relying on a remembered status.
+6. If memory is missing, expired, or inconsistent, ask a short clarification question. Do not guess.
+7. Provide a “New chat” action that starts a new conversation context. Follow the agreed retention/deletion policy when clearing stored memory.
+8. Memory is contextual assistance, not an authoritative source for order, delivery, payment, inventory, or policy facts.
+
+### 10.2 Long-term memory — cancellation reasons and outcomes
+
+**Purpose:** preserve a durable record of why an order cancellation was requested and what happened. This is an operational/audit record, not an unrestricted profile of the customer.
+
+For each cancellation request, record the reason supplied by the customer (or a clearly labelled `not_provided` value), the order reference, request time, eligibility result, final outcome, and outcome time. Example reason categories may include `ordered_by_mistake`, `delivery_too_late`, `found_better_price`, `changed_mind`, `duplicate_order`, `payment_problem`, `other`, and `not_provided`. These are proposed demo categories; allow a short free-text explanation only if needed and keep it length-limited.
+
+**Suggested record**
+```json
+{
+  "event_id": "CAN-EVT-0001",
+  "order_id": "ORD-1001",
+  "customer_id": "CUS-001",
+  "reason_code": "delivery_too_late",
+  "reason_text": "The delivery will arrive too late.",
+  "requested_at": "2026-10-22T13:40:00Z",
+  "eligibility_result": "eligible",
+  "outcome": "cancelled",
+  "outcome_at": "2026-10-22T13:41:00Z",
+  "actor": "customer_confirmed",
+  "request_id": "req-demo-0001"
+}
+```
+
+**Rules**
+1. Ask for the reason when the customer requests cancellation, before presenting the final confirmation. If they do not want to give a reason, record `not_provided`; do not block an otherwise valid cancellation just to collect a reason unless the business explicitly requires it.
+2. Do not cancel when the customer merely states a reason or asks about cancellation. Require the existing eligibility check and explicit confirmation flow.
+3. Write the final outcome only after the business/storage layer confirms it. Keep unsuccessful, withdrawn, or ineligible requests distinguishable from completed cancellations.
+4. Keep a durable audit event for the request and its result. Never let a model-generated answer count as proof that the order was cancelled.
+5. Restrict access to cancellation history to authorised staff/services. Do not expose past cancellation reasons in unrelated conversations.
+6. Define a retention and deletion policy with the business before production. Do not keep records forever by default.
+7. Use `cancellation_history.json` for the small demo only; JSON is not safe for concurrent production writes. During migration, move this record to a durable database/audit store with access controls and safe writes.
+8. Use long-term records for operational traceability and approved reporting, not to infer a customer's personality or automatically deny future cancellations.
+
+### 10.3 How memory works with request cleaning and routing
+
+1. Validate the request size and shape.
+2. Clean and normalise the user message (trim whitespace, normalise repeated spaces, and apply safe text normalisation without changing the intended meaning).
+3. Retrieve the relevant short-term conversation summary/turns, if present and not expired.
+4. Resolve follow-up references from the current message plus conversation context. If the order/product reference is still ambiguous, ask the customer to clarify.
+5. Route to RAG, a read-only tool, or both. Verify current facts with the authoritative source.
+6. For cancellation, collect a reason, check authorisation and eligibility, ask for explicit confirmation, recheck state at execution, and then persist the confirmed outcome in long-term cancellation history.
+7. Save the bounded short-term context and return the answer. Never copy all chat history into long-term memory automatically.
+
+### 10.4 Storage and API implications
+
+- Demo files: `data/conversation_memory.json` and `data/cancellation_history.json`.
+- Suggested repository methods: `get_conversation_memory(conversation_id, owner_id)`, `save_conversation_memory(...)`, `expire_old_conversations(...)`, and `append_cancellation_event(...)`.
+- Add a memory section to the `POST /api/chat` response only for safe diagnostics, for example whether short-term context was used. Do not return raw memory contents to the browser.
+- Cancellation endpoints should accept a validated reason code and optional length-limited reason text. The server should associate the event with the authenticated customer and request ID; do not trust a customer ID supplied in chat text.
+- For MongoDB migration, use a TTL index for expiring short-term conversation records where supported, and a separately controlled collection for durable cancellation events. Confirm the selected deployment's TTL and indexing behaviour during implementation.
+
+## 11. Security, privacy, reliability and quality
 
 - Validate all request bodies with Pydantic and limit message/input sizes.
 - Verify customer identity/authorization before exposing order/payment/delivery information or modifying an order.
@@ -501,7 +598,7 @@ The model's answer is not itself proof that an action succeeded. For changes suc
 - Define a response-time target with stakeholders; the requirements document does not specify a numeric target.
 - Add tests for accuracy, authorization, cancellation, tool failures, unknown questions, and correct tool selection.
 
-## 11. Phase-by-phase implementation plan
+## 12. Phase-by-phase implementation plan
 
 ### Phase 1 — Project skeleton and API contract
 - Create folders, virtual environment, dependencies, `.env.example`, README, and FastAPI app.
@@ -540,7 +637,14 @@ The model's answer is not itself proof that an action succeeded. For changes suc
 - Add safe handling for missing data, failed tools, and ambiguous requests.
 - **Exit check:** tests verify correct routing and that the answer uses the relevant retrieved evidence/tool result.
 
-### Phase 7 — Security and quality tests
+### Phase 7 — Memory and cancellation history
+- Implement short-term conversation memory with a bounded context, owner/session scope, timestamps, and TTL expiry.
+- Add follow-up tests such as “Where is my order?” followed by “What about the delivery?” and test expired/ambiguous memory.
+- Ask for a cancellation reason, allow `not_provided`, and persist the final outcome only after confirmed execution.
+- Test that cancelled, declined, ineligible, and withdrawn requests are recorded as different outcomes.
+- **Exit check:** follow-up questions use the right conversation context, expired memory is not reused, and cancellation reasons/outcomes are stored safely.
+
+### Phase 8 — Security and quality tests
 - Implement the labelled demo authorization flow and server-side cancellation checks.
 - Use a short-lived token for seeded fictional IDs; this is not production authentication.
 - Require explicit cancellation confirmation, single-use eligibility tokens, and an idempotency key for safe retries.
@@ -548,13 +652,13 @@ The model's answer is not itself proof that an action succeeded. For changes suc
 - Add endpoint and RAG evaluation cases.
 - **Exit check:** no private record is returned without authorization; cancellation never occurs without confirmation.
 
-### Phase 8 — MongoDB migration (later)
+### Phase 9 — MongoDB migration (later)
 - Implement MongoDB repository and indexes.
 - Migrate JSON records, configure vector search where supported, and retain BM25/keyword search.
 - Compare results against the JSON demo before switching.
 - **Exit check:** integration tests pass against the target MongoDB deployment.
 
-## 12. Acceptance checklist
+## 13. Acceptance checklist
 
 - [ ] Chatbot works on desktop and mobile-sized screens.
 - [ ] Frontend is implemented with React components and JSX; do not build a separate HTML/CSS/vanilla-JavaScript frontend.
@@ -569,9 +673,12 @@ The model's answer is not itself proof that an action succeeded. For changes suc
 - [ ] Authorization and privacy checks protect customer-specific information.
 - [ ] Automated tests cover expected success, missing data, and failure paths.
 - [ ] JSON storage can be replaced by MongoDB behind a repository interface.
+- [ ] Short-term memory is conversation-scoped, bounded, expires, and is not treated as authoritative operational data.
+- [ ] Cancellation requests collect a reason when offered and record the verified outcome in long-term cancellation history.
+- [ ] Memory cannot reveal another customer's conversation or cancellation history.
 
 
-## 13. Important design gaps to close before deployment
+## 14. Important design gaps to close before deployment
 
 This section records upgrades that are not fully specified elsewhere in the original design. Treat them as implementation requirements, not as features that already exist.
 
@@ -735,7 +842,7 @@ Before public deployment:
 
 MongoDB migration alone does not make the application production-ready. The integration, security, monitoring, and operational controls above are still required.
 
-## 14. Recommended API contract upgrades
+## 15. Recommended API contract upgrades
 
 The proposed API endpoints are a useful starting point. Add these contract rules before implementation:
 
@@ -750,7 +857,7 @@ The proposed API endpoints are a useful starting point. Add these contract rules
 
 Suggested additional response fields include `request_id`, `status` (for example, `completed`, `needs_confirmation`, or `handoff`), and structured `actions`. Use a strict schema and validate the model output before returning it to the client.
 
-## 15. Testing upgrades and release gates
+## 16. Testing upgrades and release gates
 
 Add tests beyond happy-path examples. Use fake provider responses and fictional data so tests are repeatable and do not depend on live carrier or payment systems.
 
@@ -779,7 +886,7 @@ Do not mark the project “production-ready” until all applicable gates pass:
 - [ ] Deployment, monitoring, backup/restore, rollback, and human-escalation procedures are documented.
 - [ ] Business owners approve the privacy, support, and operational arrangements.
 
-## 16. Updated implementation roadmap
+## 17. Updated implementation roadmap
 
 Keep the existing eight phases for the learning/demo build, then add a separate production track. This avoids making the first version too large while ensuring deployment risks are not forgotten.
 
@@ -804,7 +911,7 @@ Keep the existing eight phases for the learning/demo build, then add a separate 
 7. **Deploy and operate:** HTTPS, secrets management, restricted CORS, rate limiting, monitoring, alerts, rollback, restore drills, and human escalation.
 8. **Pilot gradually:** begin with internal users or a small controlled group, monitor failures and handoffs, fix issues, and only then consider wider rollout.
 
-## 17. Decisions still requiring confirmation
+## 18. Decisions still requiring confirmation
 
 Do not silently assume these details. Record the decision and owner when they become known.
 
@@ -821,7 +928,7 @@ Do not silently assume these details. Record the decision and owner when they be
 | Which MongoDB deployment is intended? | Determines supported search/index features and operational controls |
 | Who approves policy documents and owns updates? | Prevents answers from relying on outdated or unapproved policy text |
 
-## 18. Review summary and change record
+## 19. Review summary and change record
 
 ### Highest-priority upgrades
 

@@ -5,9 +5,9 @@ import CancellationConfirmation from "./CancellationConfirmation.jsx";
 export default function MessageList({
   messages,
   onRetry,
-  onKeepOrder,
   onQuickAction,
   onConfirmCancellation,
+  onCancellationDecision,
   isLoading,
 }) {
   const bottomRef = useRef(null);
@@ -41,15 +41,28 @@ export default function MessageList({
               )}
               {message.showCancellationPreview && (
                 <CancellationConfirmation
-                  onKeepOrder={onKeepOrder}
-                  onConfirm={(orderId, confirmationToken) =>
+                  onDecision={(orderId, confirmationToken, outcome, reasonCode, reasonText) =>
+                    onCancellationDecision(
+                      message.id,
+                      orderId,
+                      confirmationToken,
+                      outcome,
+                      reasonCode,
+                      reasonText,
+                      message.actions?.[0]?.idempotency_key,
+                    )
+                  }
+                  onConfirm={(orderId, confirmationToken, reasonCode, reasonText) =>
                     onConfirmCancellation(
                       message.id,
                       orderId,
                       confirmationToken,
                       message.actions?.[0]?.idempotency_key,
+                      reasonCode,
+                      reasonText,
                     )
                   }
+                  messageId={message.id}
                   orderId={message.actions?.[0]?.order_id}
                   confirmationToken={message.actions?.[0]?.confirmation_token}
                   disabled={isLoading}

@@ -5,6 +5,7 @@ from langchain_core.tools import StructuredTool
 from app.services.cancellations import CancellationService
 from app.storage.json_store import JsonRepository
 from app.storage.models import (
+    CancellationReasonCode,
     CancellationToolInput,
     ConfirmCancellationInput,
     OrderToolInput,
@@ -129,8 +130,15 @@ def _search_customer_reviews(
 def _check_cancellation_eligibility(
     order_id: str,
     customer_id: str,
+    reason_code: CancellationReasonCode = "not_provided",
+    reason_text: str | None = None,
 ) -> dict[str, object]:
-    return cancellation_service.check_eligibility(order_id, customer_id)
+    return cancellation_service.check_eligibility(
+        order_id,
+        customer_id,
+        reason_code,
+        reason_text,
+    )
 
 
 def _cancel_order(
@@ -138,12 +146,16 @@ def _cancel_order(
     customer_id: str,
     confirmation_token: str,
     idempotency_key: str | None = None,
+    reason_code: CancellationReasonCode = "not_provided",
+    reason_text: str | None = None,
 ) -> dict[str, object]:
     return cancellation_service.confirm_cancellation(
         order_id,
         customer_id,
         confirmation_token,
         idempotency_key,
+        reason_code,
+        reason_text,
     )
 
 

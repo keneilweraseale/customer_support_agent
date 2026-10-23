@@ -65,6 +65,7 @@ class OrchestratedChatResult:
     sources: list[dict[str, str]]
     actions: list[dict[str, str]]
     needs_confirmation: bool = False
+    long_term_record_created: bool = False
 
 
 class ChatOrchestrator:
@@ -87,8 +88,29 @@ class ChatOrchestrator:
         self._cancellation_tool = cancellation_tool
         self._policy_answer = policy_answer
 
-    def handle(self, message: str, customer_id: str | None = None) -> OrchestratedChatResult:
+    def handle(
+        self,
+        message: str,
+        customer_id: str | None = None,
+        context_order_id: str | None = None,
+    ) -> OrchestratedChatResult:
         decision = classify_message(message)
+        if (
+            decision.route
+            in {
+                ChatRoute.ORDER,
+                ChatRoute.DELIVERY,
+                ChatRoute.PAYMENT,
+                ChatRoute.CANCELLATION,
+            }
+            and decision.order_id is None
+            and context_order_id is not None
+        ):
+            decision = RouteDecision(
+                decision.route,
+                order_id=context_order_id,
+                product_id=decision.product_id,
+            )
         if decision.route == ChatRoute.CLARIFICATION:
             return OrchestratedChatResult(
                 answer=self._clarification(decision, message, customer_id),
@@ -246,6 +268,7 @@ class ChatOrchestrator:
                 route=ChatRoute.CANCELLATION,
                 sources=[],
                 actions=[],
+                long_term_record_created=True,
             )
         token = result.get("confirmation_token")
         if not isinstance(token, str):
@@ -254,6 +277,7 @@ class ChatOrchestrator:
                 route=ChatRoute.CANCELLATION,
                 sources=[],
                 actions=[],
+                long_term_record_created=True,
             )
         return OrchestratedChatResult(
             answer=(
@@ -270,6 +294,7 @@ class ChatOrchestrator:
                 }
             ],
             needs_confirmation=True,
+            long_term_record_created=True,
         )
 
     def _invoke_tool(
@@ -430,9 +455,13 @@ class ChatOrchestrator:
 
 def classify_message(message: str) -> RouteDecision:
     normalized = message.casefold()
-    order_match = ORDER_ID_PATTERN.search(message)
+    order_ids = {
+        order_id.upper() for order_id in ORDER_ID_PATTERN.findall(message)
+    }
+    if len(order_ids) > 1:
+        return RouteDecision(ChatRoute.CLARIFICATION)
+    order_id = next(iter(order_ids), None)
     product_match = PRODUCT_ID_PATTERN.search(message)
-    order_id = order_match.group(0).upper() if order_match else None
     product_id = product_match.group(0).upper() if product_match else None
     has_order_intent = has_any(normalized, ORDER_WORDS)
     has_delivery_intent = has_any(normalized, DELIVERY_WORDS)

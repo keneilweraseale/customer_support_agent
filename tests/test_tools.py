@@ -1,6 +1,6 @@
 import json
 import shutil
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -273,6 +273,139 @@ def test_cancellation_rejects_changed_order_version(
 
     assert result["cancelled"] is False
     assert repository.get_order("ORD-1001").order_status == "processing"
+
+
+def test_order_change_is_rolled_back_when_cancellation_history_cannot_be_written(
+    repository: JsonRepository,
+    monkeypatch,
+) -> None:
+    service = CancellationService(repository)
+    check = service.check_eligibility("ORD-1001", "CUS-DEMO-001")
+
+    def fail_history_write(event) -> None:
+        del event
+        raise DataStoreError("simulated history write failure")
+
+    monkeypatch.setattr(repository, "update_cancellation_event", fail_history_write)
+
+    with pytest.raises(DataStoreError, match="simulated history write failure"):
+        service.confirm_cancellation(
+            "ORD-1001",
+            "CUS-DEMO-001",
+            check["confirmation_token"],
+        )
+
+    assert repository.get_order("ORD-1001").order_status == "processing"
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    ["cancelled", "declined", "ineligible", "withdrawn"],
+)
+def test_cancellation_history_records_distinct_outcomes(
+    outcome: str,
+    tmp_path: Path,
+) -> None:
+    case_directory = tmp_path / outcome
+    case_directory.mkdir()
+    shutil.copyfile(DATA_DIRECTORY / "orders.json", case_directory / "orders.json")
+    repository = JsonRepository(case_directory)
+    service = CancellationService(repository)
+
+    if outcome == "ineligible":
+        check = service.check_eligibility("ORD-1002", "CUS-DEMO-002")
+        assert check["eligible"] is False
+        order_id = "ORD-1002"
+        customer_id = "CUS-DEMO-002"
+    else:
+        check = service.check_eligibility("ORD-1001", "CUS-DEMO-001")
+        order_id = "ORD-1001"
+        customer_id = "CUS-DEMO-001"
+        token = check["confirmation_token"]
+        pending = json.loads(
+            (case_directory / "cancellation_history.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert pending[0]["outcome"] == "pending_confirmation"
+        if outcome == "cancelled":
+            result = service.confirm_cancellation(
+                order_id,
+                customer_id,
+                token,
+                reason_code="other",
+                reason_text="The order is no longer needed.",
+            )
+            assert result["cancelled"] is True
+        else:
+            result = service.record_cancellation_decision(
+                order_id,
+                customer_id,
+                token,
+                outcome,
+                reason_code="not_provided",
+                idempotency_key=f"phase7-{outcome}-decision-key",
+            )
+            replay = service.record_cancellation_decision(
+                order_id,
+                customer_id,
+                token,
+                outcome,
+                reason_code="not_provided",
+                idempotency_key=f"phase7-{outcome}-decision-key",
+            )
+            assert result["recorded"] is True
+            assert replay == result
+
+    events = json.loads(
+        (case_directory / "cancellation_history.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    event = events[0]
+
+    assert event["outcome"] == outcome
+    assert event["outcome_at"] is not None
+    assert event["eligibility_result"] == (
+        "ineligible" if outcome == "ineligible" else "eligible"
+    )
+    if outcome == "cancelled":
+        assert event["reason_code"] == "other"
+        assert event["reason_text"] == "The order is no longer needed."
+        assert repository.get_order(order_id).order_status == "cancelled"
+    elif outcome in {"declined", "withdrawn"}:
+        assert event["reason_code"] == "not_provided"
+        assert event["reason_text"] is None
+        assert repository.get_order(order_id).order_status == "processing"
+
+
+def test_old_cancellation_history_is_expired(tmp_path: Path) -> None:
+    case_directory = tmp_path / "retention"
+    case_directory.mkdir()
+    shutil.copyfile(DATA_DIRECTORY / "orders.json", case_directory / "orders.json")
+    repository = JsonRepository(
+        case_directory,
+        cancellation_history_retention=timedelta(days=1),
+    )
+    CancellationService(repository).check_eligibility(
+        "ORD-1002",
+        "CUS-DEMO-002",
+    )
+    event = json.loads(
+        (case_directory / "cancellation_history.json").read_text(
+            encoding="utf-8"
+        )
+    )[0]
+    requested_at = datetime.fromisoformat(event["requested_at"])
+
+    assert repository.expire_old_cancellation_events(
+        requested_at + timedelta(days=2)
+    ) == 1
+    assert json.loads(
+        (case_directory / "cancellation_history.json").read_text(
+            encoding="utf-8"
+        )
+    ) == []
 
 
 def test_repository_rejects_malformed_json(repository: JsonRepository, tmp_path: Path) -> None:

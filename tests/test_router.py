@@ -136,6 +136,10 @@ def test_classifier_selects_supported_route_types() -> None:
         == ChatRoute.MIXED
     )
     assert classify_message("Can you help?").route == ChatRoute.CLARIFICATION
+    assert (
+        classify_message("Where are ORD-1001 and ORD-1002?").route
+        == ChatRoute.CLARIFICATION
+    )
 
 
 def test_policy_route_uses_rag_and_returns_sources() -> None:
@@ -175,6 +179,35 @@ def test_order_route_calls_only_order_tool_for_matching_demo_customer() -> None:
     assert policy_calls == []
     assert not tools["delivery"].calls
     assert not tools["payment"].calls
+
+
+def test_delivery_follow_up_resolves_order_from_short_term_context() -> None:
+    orchestrator, tools, _ = make_orchestrator()
+
+    result = orchestrator.handle(
+        "What about the delivery?",
+        "CUS-DEMO-001",
+        "ORD-1001",
+    )
+
+    assert result.route == ChatRoute.DELIVERY
+    assert tools["delivery"].calls == [
+        {"order_id": "ORD-1001", "customer_id": "CUS-DEMO-001"}
+    ]
+
+
+def test_ambiguous_order_references_are_not_resolved_from_memory() -> None:
+    orchestrator, tools, _ = make_orchestrator()
+
+    result = orchestrator.handle(
+        "What about delivery for ORD-1001 and ORD-1002?",
+        "CUS-DEMO-001",
+        "ORD-1001",
+    )
+
+    assert result.route == ChatRoute.CLARIFICATION
+    assert "order reference" in result.answer
+    assert not tools["delivery"].calls
 
 
 def test_private_order_data_is_not_requested_without_customer_id() -> None:
@@ -320,6 +353,7 @@ def test_cancellation_only_checks_eligibility_and_requires_confirmation() -> Non
 
     assert result.route == ChatRoute.CANCELLATION
     assert result.needs_confirmation is True
+    assert result.long_term_record_created is True
     assert "explicitly confirm" in result.answer
     assert result.actions == [
         {

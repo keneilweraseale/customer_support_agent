@@ -25,6 +25,71 @@ class RecordModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ConversationTurn(RecordModel):
+    role: Literal["user", "assistant"]
+    text: Annotated[str, StringConstraints(max_length=2000)]
+    created_at: datetime
+
+
+class ConversationMemory(RecordModel):
+    conversation_id: Annotated[str, StringConstraints(min_length=1, max_length=100)]
+    owner_id: Identifier
+    turns: list[ConversationTurn] = Field(max_length=12)
+    last_order_id: Identifier | None
+    created_at: datetime
+    updated_at: datetime
+    expires_at: datetime
+
+
+CancellationReasonCode = Literal[
+    "ordered_by_mistake",
+    "delivery_too_late",
+    "found_better_price",
+    "changed_mind",
+    "duplicate_order",
+    "payment_problem",
+    "other",
+    "not_provided",
+]
+CancellationReasonText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=280),
+]
+
+
+def validate_cancellation_reason(
+    reason_code: CancellationReasonCode,
+    reason_text: str | None,
+) -> None:
+    if reason_text is not None and reason_code != "other":
+        raise ValueError("A free-text reason is only allowed for reason_code 'other'.")
+
+
+class CancellationEvent(RecordModel):
+    event_id: Identifier
+    request_id: Identifier
+    order_id: Identifier
+    customer_id: Identifier
+    reason_code: CancellationReasonCode
+    reason_text: CancellationReasonText | None = None
+    requested_at: datetime
+    eligibility_result: Literal["eligible", "ineligible"]
+    outcome: Literal[
+        "pending_confirmation",
+        "cancelled",
+        "declined",
+        "ineligible",
+        "withdrawn",
+    ]
+    outcome_at: datetime | None = None
+    actor: Literal[
+        "customer_confirmed",
+        "customer_declined",
+        "customer_withdrew",
+        "system",
+    ]
+
+
 class OrderItem(RecordModel):
     product_id: Identifier
     quantity: int = Field(gt=0)
@@ -140,7 +205,13 @@ class ProductToolInput(RecordModel):
 
 
 class CancellationToolInput(OrderToolInput):
-    pass
+    reason_code: CancellationReasonCode = "not_provided"
+    reason_text: CancellationReasonText | None = None
+
+    @model_validator(mode="after")
+    def validate_reason(self) -> "CancellationToolInput":
+        validate_cancellation_reason(self.reason_code, self.reason_text)
+        return self
 
 
 class ConfirmCancellationInput(OrderToolInput):
@@ -152,3 +223,10 @@ class ConfirmCancellationInput(OrderToolInput):
         str,
         StringConstraints(strip_whitespace=True, min_length=16, max_length=64),
     ] | None = Field(default=None, description="Unique key for safely retrying this confirmation.")
+    reason_code: CancellationReasonCode = "not_provided"
+    reason_text: CancellationReasonText | None = None
+
+    @model_validator(mode="after")
+    def validate_reason(self) -> "ConfirmCancellationInput":
+        validate_cancellation_reason(self.reason_code, self.reason_text)
+        return self

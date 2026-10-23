@@ -1,7 +1,7 @@
 import json
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import RLock
 from typing import TypeVar
@@ -9,6 +9,8 @@ from typing import TypeVar
 from pydantic import BaseModel, ValidationError
 
 from app.storage.models import (
+    CancellationEvent,
+    ConversationMemory,
     Delivery,
     Order,
     Payment,
@@ -26,10 +28,182 @@ class DataStoreError(RuntimeError):
     """Raised when demo JSON data cannot be read, validated, or written."""
 
 
+class ConversationOwnershipError(DataStoreError):
+    """Raised when a conversation ID is already owned by another customer."""
+
+
+class CancellationConsistencyError(DataStoreError):
+    """Raised when the order and cancellation history cannot be synchronized."""
+
+
 class JsonRepository(SupportRepository):
-    def __init__(self, data_directory: Path | None = None) -> None:
+    def __init__(
+        self,
+        data_directory: Path | None = None,
+        conversation_ttl: timedelta = timedelta(minutes=30),
+        max_conversation_turns: int = 12,
+        cancellation_history_retention: timedelta = timedelta(days=365),
+    ) -> None:
+        if conversation_ttl <= timedelta(0):
+            raise ValueError("Conversation TTL must be positive.")
+        if not 1 <= max_conversation_turns <= 12:
+            raise ValueError("Conversation memory must retain between 1 and 12 turns.")
+        if cancellation_history_retention <= timedelta(0):
+            raise ValueError("Cancellation history retention must be positive.")
         self.data_directory = data_directory or Path(__file__).resolve().parents[2] / "data"
         self._write_lock = RLock()
+        self._conversation_ttl = conversation_ttl
+        self._max_conversation_turns = max_conversation_turns
+        self._cancellation_history_retention = cancellation_history_retention
+
+    def _read_optional_records(
+        self,
+        filename: str,
+        model: type[ModelT],
+        id_field: str,
+    ) -> list[ModelT]:
+        if not (self.data_directory / filename).exists():
+            return []
+        return self._read_records(filename, model, id_field)
+
+    def get_conversation_memory(
+        self,
+        conversation_id: str,
+        owner_id: str,
+    ) -> ConversationMemory | None:
+        with self._write_lock:
+            self.expire_old_conversations()
+            memories = self._read_optional_records(
+                "conversation_memory.json",
+                ConversationMemory,
+                "conversation_id",
+            )
+            return next(
+                (
+                    memory
+                    for memory in memories
+                    if memory.conversation_id == conversation_id
+                    and memory.owner_id == owner_id
+                ),
+                None,
+            )
+
+    def save_conversation_memory(
+        self,
+        memory: ConversationMemory,
+    ) -> ConversationMemory:
+        with self._write_lock:
+            now = datetime.now(timezone.utc)
+            self.expire_old_conversations(now)
+            memories = self._read_optional_records(
+                "conversation_memory.json",
+                ConversationMemory,
+                "conversation_id",
+            )
+            existing = next(
+                (
+                    item
+                    for item in memories
+                    if item.conversation_id == memory.conversation_id
+                ),
+                None,
+            )
+            if existing is not None and existing.owner_id != memory.owner_id:
+                raise ConversationOwnershipError(
+                    "Conversation ID belongs to a different customer."
+                )
+
+            saved_memory = ConversationMemory.model_validate(
+                memory.model_dump() | {
+                    "turns": memory.turns[-self._max_conversation_turns :],
+                    "created_at": existing.created_at if existing else memory.created_at,
+                    "updated_at": now,
+                    "expires_at": now + self._conversation_ttl,
+                }
+            )
+            updated = [
+                item
+                for item in memories
+                if item.conversation_id != memory.conversation_id
+            ]
+            updated.append(saved_memory)
+            self._write_records("conversation_memory.json", updated)
+            return saved_memory
+
+    def expire_old_conversations(self, now: datetime | None = None) -> int:
+        with self._write_lock:
+            current_time = now or datetime.now(timezone.utc)
+            memories = self._read_optional_records(
+                "conversation_memory.json",
+                ConversationMemory,
+                "conversation_id",
+            )
+            active_memories = [
+                memory for memory in memories if memory.expires_at > current_time
+            ]
+            expired_count = len(memories) - len(active_memories)
+            if expired_count:
+                self._write_records("conversation_memory.json", active_memories)
+            return expired_count
+
+    def append_cancellation_event(self, event: CancellationEvent) -> None:
+        with self._write_lock:
+            events = self._active_cancellation_events()
+            if any(
+                existing.event_id == event.event_id
+                or existing.request_id == event.request_id
+                for existing in events
+            ):
+                raise DataStoreError("Cancellation event ID already exists.")
+            events.append(event)
+            self._write_records("cancellation_history.json", events)
+
+    def update_cancellation_event(self, event: CancellationEvent) -> None:
+        with self._write_lock:
+            events = self._active_cancellation_events()
+            event_index = next(
+                (
+                    index
+                    for index, existing in enumerate(events)
+                    if existing.event_id == event.event_id
+                ),
+                None,
+            )
+            if event_index is None:
+                raise DataStoreError("Cancellation event could not be found.")
+            if events[event_index].request_id != event.request_id:
+                raise DataStoreError("Cancellation request ID does not match.")
+            events[event_index] = event
+            self._write_records("cancellation_history.json", events)
+
+    def expire_old_cancellation_events(
+        self,
+        now: datetime | None = None,
+    ) -> int:
+        with self._write_lock:
+            current_time = now or datetime.now(timezone.utc)
+            events = self._read_optional_records(
+                "cancellation_history.json",
+                CancellationEvent,
+                "event_id",
+            )
+            cutoff = current_time - self._cancellation_history_retention
+            active_events = [
+                event for event in events if event.requested_at > cutoff
+            ]
+            expired_count = len(events) - len(active_events)
+            if expired_count:
+                self._write_records("cancellation_history.json", active_events)
+            return expired_count
+
+    def _active_cancellation_events(self) -> list[CancellationEvent]:
+        events = self._read_optional_records(
+            "cancellation_history.json",
+            CancellationEvent,
+            "event_id",
+        )
+        cutoff = datetime.now(timezone.utc) - self._cancellation_history_retention
+        return [event for event in events if event.requested_at > cutoff]
 
     def _read_records(
         self,
@@ -210,9 +384,11 @@ class JsonRepository(SupportRepository):
         customer_id: str,
         updated_at: datetime,
         expected_updated_at: datetime,
+        cancellation_event: CancellationEvent | None = None,
     ) -> Order | None:
         with self._write_lock:
             orders = self._read_records("orders.json", Order, "order_id")
+            original_orders = list(orders)
             order_index = next(
                 (
                     index
@@ -243,4 +419,15 @@ class JsonRepository(SupportRepository):
             updated_order = Order.model_validate(updated_order)
             orders[order_index] = updated_order
             self._write_records("orders.json", orders)
+            if cancellation_event is not None:
+                try:
+                    self.update_cancellation_event(cancellation_event)
+                except DataStoreError:
+                    try:
+                        self._write_records("orders.json", original_orders)
+                    except DataStoreError as rollback_error:
+                        raise CancellationConsistencyError(
+                            "Order and cancellation history could not be synchronized."
+                        ) from rollback_error
+                    raise
             return updated_order

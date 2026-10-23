@@ -2,6 +2,8 @@ from datetime import datetime
 from typing import Protocol
 
 from app.storage.models import (
+    CancellationEvent,
+    ConversationMemory,
     Delivery,
     Order,
     Payment,
@@ -13,6 +15,28 @@ from app.storage.models import (
 
 
 class SupportRepository(Protocol):
+    def get_conversation_memory(
+        self,
+        conversation_id: str,
+        owner_id: str,
+    ) -> ConversationMemory | None: ...
+
+    def save_conversation_memory(
+        self,
+        memory: ConversationMemory,
+    ) -> ConversationMemory: ...
+
+    def expire_old_conversations(self, now: datetime | None = None) -> int: ...
+
+    def append_cancellation_event(self, event: CancellationEvent) -> None: ...
+
+    def update_cancellation_event(self, event: CancellationEvent) -> None: ...
+
+    def expire_old_cancellation_events(
+        self,
+        now: datetime | None = None,
+    ) -> int: ...
+
     def get_orders(self) -> list[Order]: ...
 
     def get_order(self, order_id: str) -> Order | None: ...
@@ -43,4 +67,5 @@ class SupportRepository(Protocol):
         customer_id: str,
         updated_at: datetime,
         expected_updated_at: datetime,
+        cancellation_event: CancellationEvent | None = None,
     ) -> Order | None: ...

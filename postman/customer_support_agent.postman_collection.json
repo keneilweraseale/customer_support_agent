@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Customer Support AI Agent",
-    "description": "GET /health, POST /api/chat, POST /api/demo/verify, and cancellation confirmation are implemented. Demo IDs and tokens are for fictional local data only and are not production authentication.",
+    "description": "GET /health, POST /api/chat, POST /api/demo/verify, cancellation confirmation, and cancellation decisions are implemented. Demo IDs and tokens are for fictional local data only and are not production authentication.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -60,7 +60,7 @@
     },
     {
       "name": "Chat demo",
-      "description": "Routes policy questions to grounded RAG and supported current-data requests to tools. Add {{authorizationToken}} for order-related requests. For cancellation, first check eligibility, then explicitly confirm using the separate endpoint.",
+      "description": "Routes policy questions to grounded RAG and supported current-data requests to tools. Authenticated conversations use bounded, expiring memory for follow-up references. For cancellation, select an optional reason before confirming or recording a non-cancellation decision.",
       "request": {
         "method": "POST",
         "header": [
@@ -71,7 +71,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"message\": \"What is your refund policy?\",\n  \"conversation_id\": \"demo-session-001\",\n  \"authorization_token\": null\n}",
+          "raw": "{\n  \"message\": \"What is your refund policy?\",\n  \"conversation_id\": \"demo-session-001\",\n  \"memory_enabled\": true,\n  \"authorization_token\": null\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -148,8 +148,8 @@
       }
     },
     {
-      "name": "Confirm cancellation (Phase 7)",
-      "description": "Run Chat demo with a cancellation request first. Copy actions[0].confirmation_token into this request, then explicitly send it.",
+      "name": "Confirm cancellation",
+      "description": "Run Chat demo with a cancellation request first. Copy actions[0].confirmation_token into this request, provide a reason code, then explicitly send it.",
       "request": {
         "method": "POST",
         "header": [
@@ -165,7 +165,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"authorization_token\": \"{{authorizationToken}}\",\n  \"confirmation_token\": \"replace-with-server-issued-token\"\n}",
+          "raw": "{\n  \"authorization_token\": \"{{authorizationToken}}\",\n  \"confirmation_token\": \"replace-with-server-issued-token\",\n  \"reason_code\": \"not_provided\",\n  \"reason_text\": null\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -173,6 +173,34 @@
           }
         },
         "url": "{{baseUrl}}/api/orders/ORD-1001/cancel"
+      }
+    },
+    {
+      "name": "Record cancellation decision",
+      "description": "Use the same server-issued token to explicitly record a declined or withdrawn cancellation request.",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-cancel-decision-0001",
+            "description": "Keep this key unchanged when retrying the same decision."
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"authorization_token\": \"{{authorizationToken}}\",\n  \"confirmation_token\": \"replace-with-server-issued-token\",\n  \"outcome\": \"declined\",\n  \"reason_code\": \"not_provided\",\n  \"reason_text\": null\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/orders/ORD-1001/cancel/decision"
       }
     },
     {

@@ -2,6 +2,7 @@ export async function sendChatMessage({ message, conversationId, authorizationTo
   const data = await postJson("/api/chat", {
     message,
     conversation_id: conversationId,
+    memory_enabled: true,
     authorization_token: authorizationToken || null,
   });
   if (typeof data.answer !== "string" || typeof data.conversation_id !== "string") {
@@ -24,17 +25,47 @@ export async function confirmCancellation({
   authorizationToken,
   confirmationToken,
   idempotencyKey,
+  reasonCode,
+  reasonText,
 }) {
   const data = await postJson(
     `/api/orders/${encodeURIComponent(orderId)}/cancel`,
     {
       authorization_token: authorizationToken,
       confirmation_token: confirmationToken,
+      reason_code: reasonCode,
+      reason_text: reasonText || null,
     },
     { "Idempotency-Key": idempotencyKey },
   );
   if (data.cancelled !== true || data.order_id !== orderId) {
     throw new Error("Cancellation could not be confirmed. Please contact support.");
+  }
+  return data;
+}
+
+export async function recordCancellationDecision({
+  orderId,
+  authorizationToken,
+  confirmationToken,
+  idempotencyKey,
+  outcome,
+  reasonCode,
+  reasonText,
+}) {
+  const data = await postJson(
+    `/api/orders/${encodeURIComponent(orderId)}/cancel/decision`,
+    {
+      authorization_token: authorizationToken,
+      confirmation_token: confirmationToken,
+      outcome,
+      reason_code: reasonCode,
+      reason_text: reasonText || null,
+    },
+    { "Idempotency-Key": idempotencyKey },
+  );
+  if (data.recorded !== true || data.order_id !== orderId || data.outcome !== outcome) {
+    throw new Error("We could not record your cancellation decision. Please try again.");
   }
   return data;
 }

@@ -27,12 +27,18 @@ This repository implements the customer-support agent described in
   Mixed warranty/product questions combine policy sources with current product
   data. Order-related requests require a demo authorization token and order
   reference; cancellation checks eligibility before asking for confirmation.
-- **Phase 7:** Seeded demo identities receive short-lived server-side tokens.
-  Order lookups require a valid token; cancellation has a separate explicit
-  confirmation endpoint and rechecks the single-use eligibility token before
-  changing the demo order. Provider requests have bounded timeouts, and tests
-  cover authorization, malformed requests, missing data, provider timeouts,
-  tool failures, cancellation, and RAG evidence/fallback behavior.
+- **Phase 7:** Authenticated conversations retain at most 12 recent turns and
+  the last order reference, scoped to the verified customer. Memory expires
+  after 30 minutes of inactivity by default, redacts common secret/payment
+  formats, and is used only to resolve follow-up references before current
+  order tools are called; `memory_enabled` can disable short-term storage and
+  retrieval. The chat response reports short-term use and whether cancellation
+  history was created, never the stored turns. Cancellation requests collect an
+  optional reason, require explicit confirmation, and persist eligibility and
+  final outcomes (`cancelled`, `declined`, `ineligible`, or `withdrawn`) in
+  `data/cancellation_history.json`. Demo cancellation history expires after
+  365 days by default. These retention values are configurable through
+  `JsonRepository`; confirm business retention requirements before production.
 
 Phase 2 tools are available through chat routing but are not separate HTTP
 endpoints apart from cancellation confirmation. The demo verification endpoint
@@ -133,11 +139,12 @@ token; this is not authentication and must not be used with real records.
 
 For cancellation, send a chat message such as `Cancel order ORD-1001` with the
 authorization token. If eligible, the response includes a separate
-single-use `confirmation_token`. Only after explicit confirmation, send both
-tokens to `POST /api/orders/ORD-1001/cancel` with a unique `Idempotency-Key`
-header. Reuse that key only when retrying the same cancellation request. The
-server rechecks the order owner, eligibility, token expiry, and order version
-before making the change.
+single-use `confirmation_token`. The chat UI asks for an optional reason before
+the final decision. Confirm via `POST /api/orders/ORD-1001/cancel` with both
+tokens and a unique `Idempotency-Key`; choose **Keep order** or **Withdraw
+request** to record a non-cancellation outcome. Reuse the key only when
+retrying the same cancellation request. The server rechecks the order owner,
+eligibility, token expiry, and order version before making the change.
 The demo's idempotency state is also process-local; production needs durable
 transactional handling across service instances.
 The chat UI sends this separate request only after **Confirm cancellation** is

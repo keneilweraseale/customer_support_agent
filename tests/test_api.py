@@ -1,5 +1,6 @@
 from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
 from app.api import chat as chat_api
 from app.agent.router import (
@@ -10,6 +11,18 @@ from app.agent.router import (
 from app.main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def isolate_chat_memory(monkeypatch, tmp_path) -> None:
+    from app.services.conversation_memory import ConversationMemoryService
+    from app.storage.json_store import JsonRepository
+
+    monkeypatch.setattr(
+        chat_api,
+        "conversation_memory_service",
+        ConversationMemoryService(JsonRepository(tmp_path)),
+    )
 
 
 def test_health_returns_json_success() -> None:
@@ -32,8 +45,8 @@ def test_unknown_route_returns_standard_json_error() -> None:
 
 def test_chat_returns_grounded_policy_answer(monkeypatch) -> None:
     class FakeOrchestrator:
-        def handle(self, message, customer_id=None):
-            del message, customer_id
+        def handle(self, message, customer_id=None, context_order_id=None):
+            del message, customer_id, context_order_id
             return OrchestratedChatResult(
                 answer="The fictional policy allows returns within 30 days.",
                 route=ChatRoute.POLICY,
@@ -70,13 +83,17 @@ def test_chat_returns_grounded_policy_answer(monkeypatch) -> None:
         ],
         "actions": [],
         "needs_confirmation": False,
+        "memory": {
+            "short_term_used": False,
+            "long_term_record_created": False,
+        },
     }
 
 
 def test_chat_generates_conversation_id_when_omitted(monkeypatch) -> None:
     class FakeOrchestrator:
-        def handle(self, message, customer_id=None):
-            del message, customer_id
+        def handle(self, message, customer_id=None, context_order_id=None):
+            del message, customer_id, context_order_id
             return OrchestratedChatResult(
                 answer="No evidence found.",
                 route=ChatRoute.CLARIFICATION,
@@ -95,8 +112,8 @@ def test_chat_resolves_demo_token_before_passing_customer_to_orchestrator(monkey
     calls = []
 
     class FakeOrchestrator:
-        def handle(self, message, customer_id=None):
-            calls.append((message, customer_id))
+        def handle(self, message, customer_id=None, context_order_id=None):
+            calls.append((message, customer_id, context_order_id))
             return OrchestratedChatResult(
                 answer="Order ORD-1001 is currently processing.",
                 route=ChatRoute.ORDER,
@@ -119,7 +136,7 @@ def test_chat_resolves_demo_token_before_passing_customer_to_orchestrator(monkey
     )
 
     assert response.status_code == 200
-    assert calls == [("Where is order ORD-1001?", "CUS-DEMO-001")]
+    assert calls == [("Where is order ORD-1001?", "CUS-DEMO-001", None)]
     assert response.json()["route"] == "order_tool"
 
 
@@ -144,6 +161,154 @@ def test_chat_runs_order_lookup_through_default_tool_orchestrator(monkeypatch) -
     assert response.json()["answer"].startswith("Order ORD-1001 is currently ")
     assert response.json()["sources"] == []
     assert response.json()["needs_confirmation"] is False
+
+
+def test_chat_uses_owner_scoped_memory_for_delivery_follow_up(monkeypatch, tmp_path) -> None:
+    from app.services.conversation_memory import ConversationMemoryService
+    from app.storage.json_store import JsonRepository
+
+    monkeypatch.setattr(chat_api, "orchestrator", build_default_orchestrator())
+    monkeypatch.setattr(
+        chat_api,
+        "conversation_memory_service",
+        ConversationMemoryService(JsonRepository(tmp_path)),
+    )
+    first_token = client.post(
+        "/api/demo/verify",
+        json={"customer_id": "CUS-DEMO-001"},
+    ).json()["authorization_token"]
+    conversation_id = "phase7-memory-follow-up"
+    first = client.post(
+        "/api/chat",
+        json={
+            "message": "Where is order ORD-1001?",
+            "conversation_id": conversation_id,
+            "authorization_token": first_token,
+        },
+    )
+    follow_up = client.post(
+        "/api/chat",
+        json={
+            "message": "What about the delivery?",
+            "conversation_id": conversation_id,
+            "authorization_token": first_token,
+        },
+    )
+
+    assert first.status_code == 200
+    assert first.json()["memory"] == {
+        "short_term_used": False,
+        "long_term_record_created": False,
+    }
+    assert follow_up.status_code == 200
+    assert follow_up.json()["route"] == "delivery_tool"
+    assert follow_up.json()["memory"] == {
+        "short_term_used": True,
+        "long_term_record_created": False,
+    }
+    assert "SHIP-1001" in follow_up.json()["answer"]
+
+    second_token = client.post(
+        "/api/demo/verify",
+        json={"customer_id": "CUS-DEMO-002"},
+    ).json()["authorization_token"]
+    other_customer = client.post(
+        "/api/chat",
+        json={
+            "message": "What about the delivery?",
+            "conversation_id": conversation_id,
+            "authorization_token": second_token,
+        },
+    )
+
+    assert other_customer.status_code == 200
+    assert other_customer.json()["conversation_id"] != conversation_id
+    assert other_customer.json()["memory"] == {
+        "short_term_used": False,
+        "long_term_record_created": False,
+    }
+    assert "order reference" in other_customer.json()["answer"]
+
+
+def test_chat_does_not_reuse_expired_conversation_context(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    import json
+
+    from app.services.conversation_memory import ConversationMemoryService
+    from app.storage.json_store import JsonRepository
+
+    monkeypatch.setattr(chat_api, "orchestrator", build_default_orchestrator())
+    monkeypatch.setattr(
+        chat_api,
+        "conversation_memory_service",
+        ConversationMemoryService(JsonRepository(tmp_path)),
+    )
+    authorization_token = client.post(
+        "/api/demo/verify",
+        json={"customer_id": "CUS-DEMO-001"},
+    ).json()["authorization_token"]
+    conversation_id = "phase7-expired-memory"
+    client.post(
+        "/api/chat",
+        json={
+            "message": "Where is order ORD-1001?",
+            "conversation_id": conversation_id,
+            "authorization_token": authorization_token,
+        },
+    )
+    memory_file = tmp_path / "conversation_memory.json"
+    saved_memory = json.loads(memory_file.read_text(encoding="utf-8"))
+    saved_memory[0]["expires_at"] = "2000-01-01T00:00:00+00:00"
+    memory_file.write_text(json.dumps(saved_memory), encoding="utf-8")
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "What about the delivery?",
+            "conversation_id": conversation_id,
+            "authorization_token": authorization_token,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["memory"] == {
+        "short_term_used": False,
+        "long_term_record_created": False,
+    }
+    assert response.json()["route"] == "clarification"
+    assert "order reference" in response.json()["answer"]
+
+
+def test_chat_can_disable_short_term_memory(monkeypatch, tmp_path) -> None:
+    from app.services.conversation_memory import ConversationMemoryService
+    from app.storage.json_store import JsonRepository
+
+    monkeypatch.setattr(chat_api, "orchestrator", build_default_orchestrator())
+    monkeypatch.setattr(
+        chat_api,
+        "conversation_memory_service",
+        ConversationMemoryService(JsonRepository(tmp_path)),
+    )
+    authorization_token = client.post(
+        "/api/demo/verify",
+        json={"customer_id": "CUS-DEMO-001"},
+    ).json()["authorization_token"]
+    conversation_id = "phase7-memory-disabled"
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "Where is order ORD-1001?",
+            "conversation_id": conversation_id,
+            "memory_enabled": False,
+            "authorization_token": authorization_token,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["memory"]["short_term_used"] is False
+    assert not (tmp_path / "conversation_memory.json").exists()
 
 
 def test_verified_customer_cannot_read_another_customers_order() -> None:
@@ -210,8 +375,8 @@ def test_chat_rejects_private_lookup_without_demo_verification(monkeypatch) -> N
     calls = []
 
     class FakeOrchestrator:
-        def handle(self, message, customer_id=None):
-            calls.append((message, customer_id))
+        def handle(self, message, customer_id=None, context_order_id=None):
+            calls.append((message, customer_id, context_order_id))
             return OrchestratedChatResult(
                 answer="Should not run",
                 route=ChatRoute.ORDER,
@@ -303,6 +468,8 @@ def test_cancellation_confirmation_endpoint_requires_both_tokens(
             "customer_id": "CUS-DEMO-001",
             "confirmation_token": "c" * 43,
             "idempotency_key": "phase7-retry-key-0002",
+            "reason_code": "not_provided",
+            "reason_text": None,
         }
     ]
     assert "a" * 43 not in caplog.text
@@ -351,6 +518,60 @@ def test_cancellation_endpoint_requires_idempotency_key(monkeypatch) -> None:
     assert calls == []
 
 
+def test_cancellation_decision_endpoint_records_declines_and_withdrawals(
+    monkeypatch,
+) -> None:
+    from app.api import orders as orders_api
+
+    calls = []
+
+    def record_decision(*arguments):
+        calls.append(arguments)
+        return {
+            "recorded": True,
+            "order_id": "ORD-1001",
+            "outcome": arguments[3],
+        }
+
+    monkeypatch.setattr(
+        orders_api.cancellation_service,
+        "record_cancellation_decision",
+        record_decision,
+    )
+    monkeypatch.setattr(
+        orders_api.demo_authorization_service,
+        "resolve_customer",
+        lambda token: "CUS-DEMO-001" if token == "a" * 43 else None,
+    )
+    response = client.post(
+        "/api/orders/ORD-1001/cancel/decision",
+        headers={"Idempotency-Key": "phase7-decision-key-0001"},
+        json={
+            "authorization_token": "a" * 43,
+            "confirmation_token": "c" * 43,
+            "outcome": "declined",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "order_id": "ORD-1001",
+        "outcome": "declined",
+        "recorded": True,
+    }
+    assert calls == [
+        (
+            "ORD-1001",
+            "CUS-DEMO-001",
+            "c" * 43,
+            "declined",
+            "not_provided",
+            None,
+            "phase7-decision-key-0001",
+        )
+    ]
+
+
 def test_cancellation_tool_failure_returns_safe_error(monkeypatch) -> None:
     from app.api import orders as orders_api
     from app.storage.json_store import DataStoreError
@@ -383,8 +604,8 @@ def test_chat_returns_json_service_error_when_providers_are_not_configured(
     monkeypatch,
 ) -> None:
     class FakeOrchestrator:
-        def handle(self, message, customer_id=None):
-            del message, customer_id
+        def handle(self, message, customer_id=None, context_order_id=None):
+            del message, customer_id, context_order_id
             from app.rag.providers import ProviderConfigurationError
 
             raise ProviderConfigurationError("missing credentials")

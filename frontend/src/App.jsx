@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import {
   confirmCancellation as sendCancellationConfirmation,
+  recordCancellationDecision as sendCancellationDecision,
   sendChatMessage,
   verifyDemoCustomer,
 } from "./api.js";
@@ -148,6 +149,8 @@ export default function App() {
     orderId,
     confirmationToken,
     idempotencyKey,
+    reasonCode,
+    reasonText,
   ) {
     if (!authorizationToken || isLoading) return;
     setIsLoading(true);
@@ -157,6 +160,8 @@ export default function App() {
         authorizationToken,
         confirmationToken,
         idempotencyKey,
+        reasonCode,
+        reasonText,
       });
       setMessages((current) =>
         current.map((message) =>
@@ -196,14 +201,62 @@ export default function App() {
     }
   }
 
-  function dismissCancellationPreview() {
-    setMessages((current) =>
-      current.map((message) =>
-        message.showCancellationPreview
-          ? { ...message, showCancellationPreview: false }
-          : message,
-      ),
-    );
+  async function recordCancellationDecision(
+    messageId,
+    orderId,
+    confirmationToken,
+    outcome,
+    reasonCode,
+    reasonText,
+    idempotencyKey,
+  ) {
+    if (!authorizationToken || isLoading) return;
+    setIsLoading(true);
+    try {
+      await sendCancellationDecision({
+        orderId,
+        authorizationToken,
+        confirmationToken,
+        idempotencyKey,
+        outcome,
+        reasonCode,
+        reasonText,
+      });
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                text:
+                  outcome === "declined"
+                    ? `Cancellation declined. Order ${orderId} was not changed.`
+                    : `Cancellation request withdrawn. Order ${orderId} was not changed.`,
+                status: `Cancellation ${outcome}`,
+                showCancellationPreview: false,
+              }
+            : message,
+        ),
+      );
+    } catch (error) {
+      if (error.status === 401) {
+        setAuthorizationToken("");
+        setVerificationMessage(error.message);
+      }
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                text: error.message,
+                status: "Cancellation decision was not recorded",
+                showCancellationPreview: true,
+              }
+            : message,
+        ),
+      );
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -215,7 +268,7 @@ export default function App() {
           <MessageList
             isLoading={isLoading}
             messages={messages.filter((message) => !message.pending)}
-            onKeepOrder={dismissCancellationPreview}
+            onCancellationDecision={recordCancellationDecision}
             onConfirmCancellation={confirmCancellation}
             onQuickAction={(action) => submitMessage(action)}
             onRetry={(text) => submitMessage(text)}
