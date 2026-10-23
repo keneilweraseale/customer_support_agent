@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from app.agent import tools as agent_tools
 from app.agent.tools import (
     cancel_order_tool,
     check_product_availability_tool,
@@ -21,6 +22,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIRECTORY = PROJECT_ROOT / "data"
 
 
+def _reset_test_order(data_directory: Path) -> None:
+    orders_path = data_directory / "orders.json"
+    orders = json.loads(orders_path.read_text(encoding="utf-8"))
+    order = next(order for order in orders if order["order_id"] == "ORD-1001")
+    order["order_status"] = "processing"
+    order["cancellation_allowed"] = True
+    orders_path.write_text(json.dumps(orders), encoding="utf-8")
+
+
 @pytest.fixture
 def repository(tmp_path: Path) -> JsonRepository:
     for filename in (
@@ -31,7 +41,21 @@ def repository(tmp_path: Path) -> JsonRepository:
         "reviews.json",
     ):
         shutil.copyfile(DATA_DIRECTORY / filename, tmp_path / filename)
+    _reset_test_order(tmp_path)
     return JsonRepository(tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def isolate_tool_repository(
+    repository: JsonRepository,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(agent_tools, "repository", repository)
+    monkeypatch.setattr(
+        agent_tools,
+        "cancellation_service",
+        CancellationService(repository),
+    )
 
 
 def test_order_tool_returns_status_only_to_matching_customer() -> None:
@@ -309,6 +333,7 @@ def test_cancellation_history_records_distinct_outcomes(
     case_directory = tmp_path / outcome
     case_directory.mkdir()
     shutil.copyfile(DATA_DIRECTORY / "orders.json", case_directory / "orders.json")
+    _reset_test_order(case_directory)
     repository = JsonRepository(case_directory)
     service = CancellationService(repository)
 

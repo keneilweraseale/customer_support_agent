@@ -4,7 +4,7 @@
     "title": "Fictional Demo Refund Guidance",
     "category": "refunds",
     "source": "policies/demo-refund-policy.md",
-    "approved": true,
+    "approved": false,
     "updated_at": "2026-10-22T00:00:00Z"
   },
   {
@@ -12,7 +12,7 @@
     "title": "Fictional Demo Contact Information",
     "category": "contact",
     "source": "policies/demo-contact-information.md",
-    "approved": true,
+    "approved": false,
     "updated_at": "2026-10-22T00:00:00Z"
   },
   {
@@ -22,5 +22,13 @@
     "source": "policies/demo-unapproved-shipping-draft.md",
     "approved": false,
     "updated_at": "2026-10-22T00:00:00Z"
+  },
+  {
+    "document_id": "customer-support-policies",
+    "title": "Customer Support AI Agent Policies",
+    "category": "policies",
+    "source": "policies/Policies.pdf",
+    "approved": true,
+    "updated_at": "2026-10-23T09:15:42Z"
   }
 ]

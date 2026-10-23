@@ -1,1 +1,41 @@
-[]
+[
+  {
+    "event_id": "CAN-EVT-91fd62fdef5e4ecbad4397020b8af148",
+    "request_id": "fbdee76b-82d0-492a-ae0b-ac2008fd134e",
+    "order_id": "ORD-1001",
+    "customer_id": "CUS-DEMO-001",
+    "reason_code": "ordered_by_mistake",
+    "reason_text": null,
+    "requested_at": "2026-10-23T05:37:57.451173Z",
+    "eligibility_result": "eligible",
+    "outcome": "cancelled",
+    "outcome_at": "2026-10-23T05:38:21.551790Z",
+    "actor": "customer_confirmed"
+  },
+  {
+    "event_id": "CAN-EVT-838909c5b39c4af49733abc1938b70ec",
+    "request_id": "0908b779-3ece-42ea-a7da-826378b61f95",
+    "order_id": "ORD-1001",
+    "customer_id": "CUS-DEMO-001",
+    "reason_code": "not_provided",
+    "reason_text": null,
+    "requested_at": "2026-10-23T05:38:43.953615Z",
+    "eligibility_result": "ineligible",
+    "outcome": "ineligible",
+    "outcome_at": "2026-10-23T05:38:43.953615Z",
+    "actor": "system"
+  },
+  {
+    "event_id": "CAN-EVT-eb3a6d12271d4323a97f09c91c852a65",
+    "request_id": "38f65397-bf21-430c-9752-566b74404672",
+    "order_id": "ORD-1002",
+    "customer_id": "CUS-DEMO-002",
+    "reason_code": "not_provided",
+    "reason_text": null,
+    "requested_at": "2026-10-23T05:40:08.212144Z",
+    "eligibility_result": "ineligible",
+    "outcome": "ineligible",
+    "outcome_at": "2026-10-23T05:40:08.212144Z",
+    "actor": "system"
+  }
+]

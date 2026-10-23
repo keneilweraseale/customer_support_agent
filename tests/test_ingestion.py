@@ -1,10 +1,10 @@
 import json
-import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from pypdf.errors import PdfReadError
 
 from app.rag.ingestion import (
     PolicyIngestor,
@@ -86,9 +86,45 @@ def _split_in_half_preserving_text(text: str) -> list[str]:
 @pytest.fixture
 def policy_data(tmp_path: Path) -> tuple[JsonRepository, Path]:
     (tmp_path / "policies").mkdir()
-    shutil.copyfile(DATA_DIRECTORY / "policy_documents.json", tmp_path / "policy_documents.json")
     (tmp_path / "policy_chunks.json").write_text("[]\n", encoding="utf-8")
-    shutil.copytree(DATA_DIRECTORY / "policies", tmp_path / "policies", dirs_exist_ok=True)
+    documents = [
+        {
+            "document_id": "demo-refund-policy",
+            "title": "Fictional Demo Refund Guidance",
+            "category": "refunds",
+            "source": "policies/demo-refund-policy.md",
+            "approved": True,
+            "updated_at": "2026-10-22T00:00:00Z",
+        },
+        {
+            "document_id": "demo-contact-information",
+            "title": "Fictional Demo Contact Information",
+            "category": "contact",
+            "source": "policies/demo-contact-information.md",
+            "approved": True,
+            "updated_at": "2026-10-22T00:00:00Z",
+        },
+        {
+            "document_id": "demo-unapproved-shipping-draft",
+            "title": "Unapproved Demo Shipping Draft",
+            "category": "shipping",
+            "source": "policies/demo-unapproved-shipping-draft.md",
+            "approved": False,
+            "updated_at": "2026-10-22T00:00:00Z",
+        },
+    ]
+    (tmp_path / "policy_documents.json").write_text(
+        json.dumps(documents),
+        encoding="utf-8",
+    )
+    for document in documents:
+        source_path = tmp_path / document["source"]
+        if not source_path.exists():
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.write_text(
+                f"{document['title']}\n\nTest policy content for ingestion.",
+                encoding="utf-8",
+            )
     return JsonRepository(tmp_path), tmp_path
 
 
@@ -295,6 +331,85 @@ def test_ingestion_rejects_source_path_outside_data_directory(
 
     with pytest.raises(DataStoreError, match="inside the data directory"):
         ingestor.ingest_approved_documents()
+
+
+def test_pdf_source_extracts_text_from_each_page(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdf_path = tmp_path / "Policies.pdf"
+    pdf_path.write_bytes(b"%PDF-test")
+    reader = SimpleNamespace(
+        is_encrypted=False,
+        pages=[
+            SimpleNamespace(extract_text=lambda: "First page"),
+            SimpleNamespace(extract_text=lambda: "Second page"),
+        ],
+    )
+    pdf_reader = Mock(return_value=reader)
+    monkeypatch.setattr("app.rag.ingestion.PdfReader", pdf_reader)
+    ingestor = PolicyIngestor(
+        Mock(),
+        tmp_path,
+        FakeSemanticChunker(),
+        FakeEmbedder(),
+    )
+    document = SimpleNamespace(
+        document_id="demo-policy",
+        source="Policies.pdf",
+    )
+
+    assert ingestor._read_source(document) == "First page\n\nSecond page"
+    pdf_reader.assert_called_once_with(pdf_path)
+
+
+def test_pdf_source_rejects_encrypted_documents(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "Policies.pdf").write_bytes(b"%PDF-test")
+    monkeypatch.setattr(
+        "app.rag.ingestion.PdfReader",
+        lambda _path: SimpleNamespace(is_encrypted=True, pages=[]),
+    )
+    ingestor = PolicyIngestor(
+        Mock(),
+        tmp_path,
+        FakeSemanticChunker(),
+        FakeEmbedder(),
+    )
+    document = SimpleNamespace(
+        document_id="demo-policy",
+        source="Policies.pdf",
+    )
+
+    with pytest.raises(DataStoreError, match="encrypted"):
+        ingestor._read_source(document)
+
+
+def test_pdf_source_reports_read_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "Policies.pdf").write_bytes(b"%PDF-test")
+
+    def fail_to_read(_path: Path) -> None:
+        raise PdfReadError("invalid PDF")
+
+    monkeypatch.setattr("app.rag.ingestion.PdfReader", fail_to_read)
+    ingestor = PolicyIngestor(
+        Mock(),
+        tmp_path,
+        FakeSemanticChunker(),
+        FakeEmbedder(),
+    )
+    document = SimpleNamespace(
+        document_id="demo-policy",
+        source="Policies.pdf",
+    )
+
+    with pytest.raises(DataStoreError, match="extract text from policy PDF"):
+        ingestor._read_source(document)
 
 
 def test_ingestion_does_not_write_empty_embedding_vectors(

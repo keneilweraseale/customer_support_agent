@@ -13,9 +13,10 @@ This repository implements the customer-support agent described in
   cancellation eligibility and confirmation flow.
 - **Phase 3:** Responsive React/Vite chat UI connected to `POST /api/chat`.
   The endpoint returns grounded policy answers from Phase 5.
-- **Phase 4:** Approved Markdown/text policy ingestion with source-preserving
+- **Phase 4:** Approved Markdown/text/PDF policy ingestion with source-preserving
   Groq semantic chunking (deterministic fallback), Mistral `mistral-embed`
-  vectors, traceable metadata, and JSON persistence.
+  vectors, traceable metadata, and JSON persistence. PDFs must contain
+  extractable text; scanned/image-only PDFs are not OCR-processed.
 - **Phase 5:** Policy chat uses approved/current chunks, cosine and BM25
   retrieval combined by reciprocal rank fusion, and Groq answers grounded in
   retrieved evidence with source metadata. Reciprocal rank fusion uses
@@ -167,8 +168,9 @@ Run policy ingestion from the project root after configuring the key:
 ```
 
 Only documents marked `"approved": true` in `data/policy_documents.json` are
-loaded. Phase 4 accepts Markdown (`.md`) and plain text (`.txt`) sources within
-the `data/` directory. The sample policy documents are fictional test
-materials, not actual company policies. Successful ingestion replaces each
-document's existing chunks in `data/policy_chunks.json`; it does not duplicate
-chunks on repeated runs.
+loaded. Phase 4 accepts Markdown (`.md`), plain text (`.txt`), and PDFs (`.pdf`)
+within the `data/` directory. PDF extraction reads embedded text only; scanned
+or image-only PDFs require OCR before ingestion. The sample policy documents
+are fictional test materials, not actual company policies. Successful
+ingestion replaces each document's existing chunks in
+`data/policy_chunks.json`; it does not duplicate chunks on repeated runs.

@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 from typing import Protocol
 
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 import tiktoken
 
 from app.rag.providers import (
@@ -17,7 +19,7 @@ from app.storage.json_store import DataStoreError, JsonRepository
 from app.storage.models import PolicyChunk, PolicyDocument
 
 logger = logging.getLogger(__name__)
-SUPPORTED_SOURCE_SUFFIXES = {".md", ".txt"}
+SUPPORTED_SOURCE_SUFFIXES = {".md", ".txt", ".pdf"}
 DEFAULT_MAX_CHARS = 1200
 TOKEN_ENCODING = tiktoken.get_encoding("cl100k_base")
 
@@ -165,13 +167,26 @@ class PolicyIngestor:
         if source_path.suffix.lower() not in SUPPORTED_SOURCE_SUFFIXES:
             raise DataStoreError(
                 f"Unsupported policy source type for {document.document_id}; "
-                "use Markdown or plain text."
+                "use Markdown, plain text, or PDF."
             )
         try:
+            if source_path.suffix.lower() == ".pdf":
+                reader = PdfReader(source_path)
+                if reader.is_encrypted:
+                    raise DataStoreError(
+                        f"Policy PDF is encrypted and cannot be read: {document.source}"
+                    )
+                return "\n\n".join(
+                    page.extract_text() or "" for page in reader.pages
+                )
             return source_path.read_text(encoding="utf-8")
         except FileNotFoundError as exc:
             raise DataStoreError(
                 f"Policy source file is missing: {document.source}"
+            ) from exc
+        except PdfReadError as exc:
+            raise DataStoreError(
+                f"Could not extract text from policy PDF: {document.source}"
             ) from exc
         except UnicodeError as exc:
             raise DataStoreError(
