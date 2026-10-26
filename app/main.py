@@ -14,10 +14,13 @@ from app.api.authorization import router as authorization_router
 from app.api.chat import router as chat_router
 from app.api.health import router as health_router
 from app.api.orders import router as orders_router
+from app.evaluation.router import router as evaluation_router
+from app.evaluation.middleware import EvaluationRequestSizeMiddleware
 
 load_dotenv()
 
 app = FastAPI(title="Customer Support AI Agent", version="0.1.0")
+app.add_middleware(EvaluationRequestSizeMiddleware)
 
 
 @app.middleware("http")
@@ -37,3 +40,4 @@ app.include_router(health_router)
 app.include_router(chat_router)
 app.include_router(authorization_router)
 app.include_router(orders_router)
+app.include_router(evaluation_router)

@@ -66,6 +66,8 @@ class OrchestratedChatResult:
     actions: list[dict[str, str]]
     needs_confirmation: bool = False
     long_term_record_created: bool = False
+    retrieval_context: list[str] | None = None
+    actual_tool_calls: list[dict[str, object]] | None = None
 
 
 class ChatOrchestrator:
@@ -93,7 +95,9 @@ class ChatOrchestrator:
         message: str,
         customer_id: str | None = None,
         context_order_id: str | None = None,
+        cancellation_preview_tool: InvokableTool | None = None,
     ) -> OrchestratedChatResult:
+        actual_tool_calls: list[dict[str, object]] = []
         decision = classify_message(message)
         if (
             decision.route
@@ -120,10 +124,10 @@ class ChatOrchestrator:
             )
 
         if decision.route == ChatRoute.POLICY:
-            return self._answer_policy(message)
+            return self._answer_policy(message, actual_tool_calls)
 
         if decision.route == ChatRoute.MIXED:
-            return self._answer_mixed(message, decision)
+            return self._answer_mixed(message, decision, actual_tool_calls)
 
         if decision.route in (
             ChatRoute.ORDER,
@@ -155,18 +159,26 @@ class ChatOrchestrator:
                     actions=[],
                 )
             if decision.route == ChatRoute.CANCELLATION:
-                return self._check_cancellation(decision.order_id, customer_id)
+                return self._check_cancellation(
+                    decision.order_id,
+                    customer_id,
+                    actual_tool_calls,
+                    cancellation_preview_tool,
+                )
 
-            tool = {
-                ChatRoute.ORDER: self._order_tool,
-                ChatRoute.DELIVERY: self._delivery_tool,
-                ChatRoute.PAYMENT: self._payment_tool,
+            tool, tool_name = {
+                ChatRoute.ORDER: (self._order_tool, "get_order_status"),
+                ChatRoute.DELIVERY: (self._delivery_tool, "get_delivery_status"),
+                ChatRoute.PAYMENT: (self._payment_tool, "get_payment_status"),
             }[decision.route]
             result = self._invoke_tool(
                 tool,
                 {"order_id": decision.order_id, "customer_id": customer_id},
+                tool_name,
+                actual_tool_calls,
             )
-            return self._format_order_result(decision.route, result)
+            formatted = self._format_order_result(decision.route, result)
+            return self._with_tool_calls(formatted, actual_tool_calls)
 
         if decision.route == ChatRoute.PRODUCT:
             if decision.product_id is None:
@@ -179,15 +191,28 @@ class ChatOrchestrator:
             result = self._invoke_tool(
                 self._product_tool,
                 {"product_id": decision.product_id},
+                "check_product_availability",
+                actual_tool_calls,
             )
-            return self._format_product_result(result)
+            return self._with_tool_calls(
+                self._format_product_result(result),
+                actual_tool_calls,
+            )
 
         if decision.route == ChatRoute.REVIEWS:
             product_id = decision.product_id
             query = None if product_id else message
             tool_input = {"product_id": product_id} if product_id else {"query": query}
-            result = self._invoke_tool(self._review_tool, tool_input)
-            return self._format_review_result(result)
+            result = self._invoke_tool(
+                self._review_tool,
+                tool_input,
+                "search_customer_reviews",
+                actual_tool_calls,
+            )
+            return self._with_tool_calls(
+                self._format_review_result(result),
+                actual_tool_calls,
+            )
 
         return OrchestratedChatResult(
             answer="I couldn’t determine what information you need. Could you clarify your question?",
@@ -196,7 +221,11 @@ class ChatOrchestrator:
             actions=[],
         )
 
-    def _answer_policy(self, message: str) -> OrchestratedChatResult:
+    def _answer_policy(
+        self,
+        message: str,
+        actual_tool_calls: list[dict[str, object]],
+    ) -> OrchestratedChatResult:
         try:
             result = self._policy_answer(message)
         except ProviderConfigurationError:
@@ -205,22 +234,31 @@ class ChatOrchestrator:
                 route=ChatRoute.POLICY,
                 sources=[],
                 actions=[],
+                retrieval_context=[],
+                actual_tool_calls=list(actual_tool_calls),
             )
         return OrchestratedChatResult(
             answer=result.answer,
             route=ChatRoute.POLICY,
             sources=result.sources,
             actions=[],
+            retrieval_context=[
+                retrieved.chunk.text for retrieved in result.retrieval.results
+            ],
+            actual_tool_calls=list(actual_tool_calls),
         )
 
     def _answer_mixed(
         self,
         message: str,
         decision: RouteDecision,
+        actual_tool_calls: list[dict[str, object]],
     ) -> OrchestratedChatResult:
         tool_result = self._invoke_tool(
             self._product_tool,
             {"product_id": decision.product_id or ""},
+            "check_product_availability",
+            actual_tool_calls,
         )
         product_answer = self._format_product_result(tool_result)
         try:
@@ -235,6 +273,8 @@ class ChatOrchestrator:
                 route=ChatRoute.MIXED,
                 sources=[],
                 actions=[],
+                retrieval_context=[],
+                actual_tool_calls=list(actual_tool_calls),
             )
         return OrchestratedChatResult(
             answer=(
@@ -244,16 +284,24 @@ class ChatOrchestrator:
             route=ChatRoute.MIXED,
             sources=policy_result.sources,
             actions=[],
+            retrieval_context=[
+                retrieved.chunk.text for retrieved in policy_result.retrieval.results
+            ],
+            actual_tool_calls=list(actual_tool_calls),
         )
 
     def _check_cancellation(
         self,
         order_id: str,
         customer_id: str,
+        actual_tool_calls: list[dict[str, object]],
+        cancellation_preview_tool: InvokableTool | None = None,
     ) -> OrchestratedChatResult:
         result = self._invoke_tool(
-            self._cancellation_tool,
+            cancellation_preview_tool or self._cancellation_tool,
             {"order_id": order_id, "customer_id": customer_id},
+            "check_cancellation_eligibility",
+            actual_tool_calls,
         )
         if result.get("found") is not True:
             return OrchestratedChatResult(
@@ -261,6 +309,8 @@ class ChatOrchestrator:
                 route=ChatRoute.CANCELLATION,
                 sources=[],
                 actions=[],
+                retrieval_context=[],
+                actual_tool_calls=list(actual_tool_calls),
             )
         if result.get("eligible") is not True:
             return OrchestratedChatResult(
@@ -268,6 +318,8 @@ class ChatOrchestrator:
                 route=ChatRoute.CANCELLATION,
                 sources=[],
                 actions=[],
+                retrieval_context=[],
+                actual_tool_calls=list(actual_tool_calls),
                 long_term_record_created=True,
             )
         token = result.get("confirmation_token")
@@ -277,6 +329,8 @@ class ChatOrchestrator:
                 route=ChatRoute.CANCELLATION,
                 sources=[],
                 actions=[],
+                retrieval_context=[],
+                actual_tool_calls=list(actual_tool_calls),
                 long_term_record_created=True,
             )
         return OrchestratedChatResult(
@@ -295,20 +349,73 @@ class ChatOrchestrator:
             ],
             needs_confirmation=True,
             long_term_record_created=True,
+            retrieval_context=[],
+            actual_tool_calls=list(actual_tool_calls),
         )
 
     def _invoke_tool(
         self,
         tool: InvokableTool,
         tool_input: dict[str, str],
+        tool_name: str,
+        actual_tool_calls: list[dict[str, object]],
     ) -> dict[str, object]:
         try:
             result = tool.invoke(tool_input)
         except (DataStoreError, ToolException):
+            actual_tool_calls.append(
+                self._tool_trace(tool_name, tool_input, {"unavailable": True})
+            )
             return {"found": False, "unavailable": True}
         if not isinstance(result, dict):
+            actual_tool_calls.append(
+                self._tool_trace(tool_name, tool_input, {"unavailable": True})
+            )
             return {"found": False, "unavailable": True}
+        actual_tool_calls.append(self._tool_trace(tool_name, tool_input, result))
         return result
+
+    def _tool_trace(
+        self,
+        tool_name: str,
+        tool_input: dict[str, str],
+        result: dict[str, object],
+    ) -> dict[str, object]:
+        safe_arguments = {
+            key: value if key in {"order_id", "product_id"} else "[redacted]"
+            for key, value in tool_input.items()
+        }
+        if result.get("unavailable") is True:
+            result_status = "unavailable"
+        elif isinstance(result.get("eligible"), bool):
+            result_status = "eligible" if result["eligible"] else "ineligible"
+        elif isinstance(result.get("cancelled"), bool):
+            result_status = "cancelled" if result["cancelled"] else "not_cancelled"
+        elif result.get("found") is False:
+            result_status = "not_found"
+        else:
+            result_status = "success"
+        return {
+            "name": tool_name,
+            "arguments": safe_arguments,
+            "result_status": result_status,
+        }
+
+    def _with_tool_calls(
+        self,
+        result: OrchestratedChatResult,
+        actual_tool_calls: list[dict[str, object]],
+    ) -> OrchestratedChatResult:
+        return OrchestratedChatResult(
+            answer=result.answer,
+            route=result.route,
+            sources=result.sources,
+            actions=result.actions,
+            needs_confirmation=result.needs_confirmation,
+            long_term_record_created=result.long_term_record_created,
+            retrieval_context=result.retrieval_context,
+            actual_tool_calls=list(actual_tool_calls),
+        )
 
     def _format_order_result(
         self,
