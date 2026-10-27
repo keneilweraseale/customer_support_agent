@@ -333,7 +333,7 @@ def test_private_order_data_is_not_requested_without_customer_id() -> None:
     result = orchestrator.handle("Where is order ORD-1001?")
 
     assert result.route == ChatRoute.ORDER
-    assert "verify a seeded demo customer" in result.answer
+    assert "sign in" in result.answer
     assert all(not tool.calls for tool in tools.values())
 
 
@@ -343,7 +343,7 @@ def test_ambiguous_private_order_request_asks_for_demo_id_and_order() -> None:
     result = orchestrator.handle("Where is my order?")
 
     assert result.route == ChatRoute.CLARIFICATION
-    assert "demo customer ID and order reference" in result.answer
+    assert "sign in and provide your order reference" in result.answer
     assert all(not tool.calls for tool in tools.values())
 
 
@@ -488,7 +488,7 @@ def test_cancellation_never_runs_when_demo_customer_id_is_missing() -> None:
 
     result = orchestrator.handle("Cancel order ORD-1001")
 
-    assert "verify a seeded demo customer" in result.answer
+    assert "sign in" in result.answer
     assert not tools["cancellation"].calls
 
 

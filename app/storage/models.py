@@ -117,6 +117,27 @@ class Order(RecordModel):
     cancellation_allowed: bool
 
 
+class CustomerAccount(RecordModel):
+    email: Annotated[
+        str,
+        StringConstraints(
+            strip_whitespace=True,
+            min_length=3,
+            max_length=254,
+            pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+        ),
+    ]
+    customer_id: Identifier
+    password_hash: Annotated[
+        str,
+        StringConstraints(
+            min_length=1,
+            max_length=256,
+            pattern=r"^scrypt\$16384\$8\$1\$[A-Za-z0-9_-]{22}\$[A-Za-z0-9_-]{43}$",
+        ),
+    ]
+
+
 class Delivery(RecordModel):
     shipment_id: Identifier
     order_id: Identifier
@@ -208,7 +229,7 @@ class ReviewSearchInput(RecordModel):
 
 class OrderToolInput(RecordModel):
     order_id: Identifier = Field(description="The customer's order reference.")
-    customer_id: Identifier = Field(description="The verified demo customer ID.")
+    customer_id: Identifier = Field(description="The authenticated customer ID.")
 
 
 class ProductToolInput(RecordModel):
@@ -216,7 +237,7 @@ class ProductToolInput(RecordModel):
 
 
 class CustomerOrdersToolInput(RecordModel):
-    customer_id: Identifier = Field(description="The verified demo customer ID.")
+    customer_id: Identifier = Field(description="The authenticated customer ID.")
 
 
 class CancellationToolInput(OrderToolInput):

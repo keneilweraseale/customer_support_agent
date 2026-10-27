@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Customer Support AI Agent",
-    "description": "GET /health, POST /api/chat, POST /api/demo/verify, cancellation confirmation, and cancellation decisions are implemented. Demo IDs and tokens are for fictional local data only and are not production authentication.",
+    "description": "GET /health, POST /api/auth/login, POST /api/chat, cancellation confirmation, and cancellation decisions are implemented. Customer accounts must be provisioned locally.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -24,8 +24,8 @@
       }
     },
     {
-      "name": "Verify demo customer",
-      "description": "Issues a 15-minute token for a seeded fictional customer ID. This is not real authentication.",
+      "name": "Customer login",
+      "description": "Logs in with an administrator-provisioned email/password account and stores the short-lived customer session token. Set customerEmail and customerPassword in a private Postman environment; do not save credentials in a shared collection.",
       "event": [
         {
           "listen": "test",
@@ -48,14 +48,14 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"customer_id\": \"CUS-DEMO-001\"\n}",
+          "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{customerPassword}}\"\n}",
           "options": {
             "raw": {
               "language": "json"
             }
           }
         },
-        "url": "{{baseUrl}}/api/demo/verify"
+        "url": "{{baseUrl}}/api/auth/login"
       }
     },
     {
@@ -83,7 +83,7 @@
     },
     {
       "name": "Order status via chat",
-      "description": "Requires a token from Verify demo customer and the matching seeded order.",
+      "description": "Requires a token from Customer login and an order owned by that customer.",
       "request": {
         "method": "POST",
         "header": [

@@ -1,22 +1,32 @@
 [
   {
-    "conversation_id": "9cc79fd0-e50c-4b33-b91a-00f99b623eca",
-    "owner_id": "CUS-DEMO-002",
+    "conversation_id": "5ac45eed-12ef-48aa-89d4-a7fe7236339e",
+    "owner_id": "CUS-DEMO-001",
     "turns": [
       {
         "role": "user",
-        "text": "My order ORD-1002 is marked cancelled, but my bank account was charged. I want my money back. The cancellation happened days ago, so don't tell me to wait without checking anything.",
-        "created_at": "2026-10-27T06:12:26.833236Z"
+        "text": "Check order status for ORD-1001",
+        "created_at": "2026-10-27T11:48:32.785673Z"
       },
       {
         "role": "assistant",
-        "text": "I checked order ORD-1002: it is marked shipped, and payment PAY-1002 is recorded as failed (updated 2026-10-18). I can’t issue a refund directly, so I’m escalating your refund request for review.\n\nI’ve created support ticket SUP-0738300D0849 for follow-up.",
-        "created_at": "2026-10-27T06:12:26.833236Z"
+        "text": "Order ORD-1001 is currently cancelled.",
+        "created_at": "2026-10-27T11:48:32.785673Z"
+      },
+      {
+        "role": "user",
+        "text": "Check order status for ORD-1002",
+        "created_at": "2026-10-27T11:48:58.033811Z"
+      },
+      {
+        "role": "assistant",
+        "text": "I couldn’t find that order for this demo customer.",
+        "created_at": "2026-10-27T11:48:58.033811Z"
       }
     ],
     "last_order_id": "ORD-1002",
-    "created_at": "2026-10-27T06:12:26.833236Z",
-    "updated_at": "2026-10-27T06:12:26.833582Z",
-    "expires_at": "2026-10-27T06:42:26.833582Z"
+    "created_at": "2026-10-27T11:48:32.785673Z",
+    "updated_at": "2026-10-27T11:48:58.034006Z",
+    "expires_at": "2026-10-27T12:18:58.034006Z"
   }
 ]

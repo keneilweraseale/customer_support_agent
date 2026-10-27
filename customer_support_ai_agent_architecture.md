@@ -181,7 +181,7 @@ Build a clean, friendly, responsive support-chat interface. It should feel like 
 1. Customer types “Where is order ORD-1001?”
 2. Backend checks the required identity/authorization step.
 3. If verified, the order-status tool reads the demo data.
-4. The assistant shows status and available delivery information. If not verified, it asks the customer to complete the configured demo verification step rather than disclosing private data.
+4. The assistant shows status and available delivery information. If not signed in, it asks the customer to log in rather than disclosing private data.
 
 **C. Order cancellation**
 1. Customer asks to cancel an order.
@@ -286,7 +286,7 @@ Define small, clearly named tools, for example:
 
 Tool names and arguments are examples for implementation, not existing endpoints. Tools should validate input, return structured results, handle missing records, and avoid returning unrelated customer data. The cancellation tool must only run after explicit confirmation and a server-side eligibility/authorization recheck.
 
-For a demo, customer verification can be simulated with clearly labelled test identities or a short-lived demo verification token. This is not a production identity solution.
+Customers log in with administrator-provisioned email/password accounts. Passwords are stored as salted scrypt hashes; an authenticated token maps to exactly one customer ID and is required for private order and cancellation operations. Provision demo accounts only for fictional records and use a production identity/session system before handling real customer data.
 
 ## 7. API contract and Postman testing
 
@@ -297,7 +297,7 @@ All endpoints return JSON. Use consistent HTTP status codes and response shapes.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | Confirm that the API is running |
-| POST | `/api/demo/verify` | Issue a short-lived token for a seeded demo identity; not production authentication |
+| POST | `/api/auth/login` | Verify a provisioned email/password account and issue a short-lived customer-scoped token |
 | POST | `/api/chat` | Send a message and receive an assistant response |
 | GET | `/api/orders/{order_id}` | Look up order details after authorization |
 | GET | `/api/orders/{order_id}/delivery` | Retrieve delivery information after authorization |
@@ -747,7 +747,7 @@ The same pattern should be applied to any future refund, exchange, address-chang
 
 ### 13.5 Specify authentication and authorization at the API boundary
 
-An untrusted `customer_id` in a request body is not proof of identity. The local demo's short-lived verification token is intentionally only a simulation for seeded fictional records; it is not suitable for production.
+An untrusted `customer_id` in a request body is not proof of identity. The local login maps a provisioned email/password account to one customer ID; order handlers resolve ownership only from the server-side session and must check every order against that customer ID.
 
 Before real deployment:
 
@@ -755,7 +755,7 @@ Before real deployment:
 - Derive the customer identity from a validated server-side session or access token, not from the chat message or an untrusted request field.
 - Enforce object-level authorization on every order, delivery, and payment endpoint: the authenticated customer may only access records they are entitled to see.
 - Require stronger authorization and, where appropriate, re-authentication for sensitive state changes.
-- Keep demo verification visibly separate from production authentication.
+- Do not accept customer IDs supplied by the browser or chat as authentication.
 - Test attempts to access another customer's order by changing an order ID, customer ID, conversation ID, or tool argument.
 
 Do not expose private order details in a conversation merely because the customer knows an order reference.

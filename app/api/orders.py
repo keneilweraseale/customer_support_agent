@@ -93,7 +93,7 @@ async def confirm_order_cancellation(
     if customer_id is None:
         raise HTTPException(
             status_code=401,
-            detail="Demo verification is missing or expired.",
+            detail="Your session is missing or expired. Please sign in again.",
         )
 
     try:
@@ -198,7 +198,7 @@ async def record_cancellation_decision(
     if customer_id is None:
         raise HTTPException(
             status_code=401,
-            detail="Demo verification is missing or expired.",
+            detail="Your session is missing or expired. Please sign in again.",
         )
 
     try:

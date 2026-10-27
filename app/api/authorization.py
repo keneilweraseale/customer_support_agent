@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
 
 from app.services.demo_authorization import (
     DemoAuthorizationError,
@@ -10,49 +10,53 @@ from app.services.demo_authorization import (
 )
 from app.storage.json_store import DataStoreError
 
-router = APIRouter(prefix="/api/demo", tags=["demo authorization"])
+router = APIRouter(prefix="/api/auth", tags=["authorization"])
 
-DemoCustomerId = Annotated[
+EmailAddress = Annotated[
     str,
     StringConstraints(
         strip_whitespace=True,
-        min_length=12,
-        max_length=12,
-        pattern=r"^CUS-DEMO-\d{3}$",
+        min_length=3,
+        max_length=254,
+        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
     ),
 ]
+Password = Annotated[str, StringConstraints(min_length=1, max_length=256)]
 
 
-class DemoVerificationRequest(BaseModel):
+class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    customer_id: DemoCustomerId
+    email: EmailAddress
+    password: Password
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.casefold()
 
 
-class DemoVerificationResponse(BaseModel):
+class LoginResponse(BaseModel):
     authorization_token: str
     expires_at: datetime
-    demo_only: bool = True
 
 
-@router.post("/verify", response_model=DemoVerificationResponse)
-async def verify_demo_customer(
-    request: DemoVerificationRequest,
-) -> DemoVerificationResponse:
+@router.post("/login", response_model=LoginResponse)
+async def login(request: LoginRequest) -> LoginResponse:
     try:
-        token, expires_at = demo_authorization_service.issue_token(request.customer_id)
+        token, expires_at = demo_authorization_service.authenticate(
+            request.email,
+            request.password,
+        )
     except DemoAuthorizationError as exc:
         raise HTTPException(
-            status_code=404,
-            detail="Unknown demo customer identity.",
+            status_code=401,
+            detail="Invalid email or password.",
         ) from exc
     except DataStoreError as exc:
         raise HTTPException(
             status_code=503,
-            detail="Demo verification is temporarily unavailable.",
+            detail="Login is temporarily unavailable.",
         ) from exc
 
-    return DemoVerificationResponse(
-        authorization_token=token,
-        expires_at=expires_at,
-    )
+    return LoginResponse(authorization_token=token, expires_at=expires_at)
