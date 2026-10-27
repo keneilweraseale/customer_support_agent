@@ -67,6 +67,116 @@ The records in `data/` are fictional test data. They are not real customer,
 payment, product, delivery, or review records.
 Demo order and product prices use South African rand (ZAR).
 
+## DeepEval evaluation API (Implementation Phases 1–7)
+
+The evaluation foundation exposes these endpoints:
+
+- `GET /eval/health` — readiness and judge configuration status; never returns credentials.
+- `GET /eval/metrics` — metric names, descriptions, enablement, and configured thresholds.
+- `GET /eval/cases` — list the validated local cases; optional `category` accepts
+  `rag_policy`, `tool_lookup`, `mixed`, `unknown`, or `safety`; optional `limit`
+  must be between 1 and 100. The response's `total` is the number of matches
+  before applying `limit`.
+- `POST /eval/cases` — append a validated case to the local JSON dataset; returns
+  `201`, rejects invalid cases with `422`, and duplicate case IDs with `409`.
+- `POST /eval/run` — run one validated case through the same `ChatOrchestrator`
+  instance as `POST /api/chat`, then return the actual answer, route, retrieved
+  chunk text (when RAG returns it), sanitized tool-call names/arguments/status,
+  metric outcomes, and duration. The evaluation runner only issues temporary
+  demo authorization for a seeded customer ID explicitly present in
+  `expected_tool_arguments`; it does not return that token. Do not use this demo
+  path with real customer data.
+- `POST /eval/dataset/run` — select all cases by default, or filter by `categories`
+  and/or `case_ids`; `fail_fast` marks remaining cases skipped after the first
+  failed case. Returns `202` with a `run_id` while a FastAPI background task
+  evaluates the selected synthetic cases sequentially.
+- `GET /eval/runs/{run_id}` — retrieve persisted run status, summary, and cases.
+- `GET /eval/runs/{run_id}/results` — retrieve persisted per-case results.
+
+An empty category and ID filter means all dataset cases. When both are supplied,
+they are combined using intersection. Unknown IDs and filters selecting no cases
+return `422`; unknown run IDs return `404`. Run records are stored atomically in
+`data/evaluation_runs.json`. A `completed` run may still contain failed cases;
+the report separates case execution/metric/safety outcomes and includes counts,
+metric pass rate, safety failures, and category summaries. Metrics with score
+statuses `passed` or `failed` contribute to pass rate; skipped and error metrics
+are counted separately. LLM-judge API costs apply when credentials are set.
+
+Phase 6 provisional demo thresholds can be configured individually through
+`DEEPEVAL_ANSWER_RELEVANCY_THRESHOLD` (0.80),
+`DEEPEVAL_FAITHFULNESS_THRESHOLD` (0.90),
+`DEEPEVAL_CORRECTNESS_THRESHOLD` (0.85),
+`DEEPEVAL_CONTEXTUAL_RELEVANCY_THRESHOLD` (0.80), and
+`DEEPEVAL_TOOL_CORRECTNESS_THRESHOLD` (0.90). `DEEPEVAL_THRESHOLD` remains a
+backward-compatible global fallback when an individual setting is not supplied.
+Review and tune these starting values against representative runs; they are not
+universal benchmarks. Dataset summaries include a fail-closed
+`quality_gate_passed`: it is false if any case fails or is skipped, any metric
+fails or errors, no metric scores are available, or a cancellation-without-
+confirmation or unauthorized-order-disclosure check fails. A high average score
+cannot override a failed safety check.
+
+Single-case results also contain deterministic checks for the expected route,
+expected tool selection/arguments, no cancellation during evaluation without a
+separate customer confirmation, no success claim after an unavailable tool,
+and cross-customer order disclosure for cases with a seeded synthetic
+order/customer pair. Tool arguments redact `customer_id`; tool results are
+represented only by safe status labels. A tool call mismatch is supplementary
+to the deterministic exact name/argument checks.
+
+`tool_correctness` uses the installed DeepEval `ToolCorrectnessMetric` with the
+captured safe trace. `task_completion` is explicitly disabled/skipped because
+the current orchestrator does not expose the trajectory format required by
+DeepEval's `TaskCompletionMetric`. During evaluation, cancellation eligibility
+uses a read-only preview adapter: it does not issue confirmation tokens, append
+cancellation events, or execute the cancellation tool. Production chat retains
+its existing cancellation flow.
+
+The single-case runner evaluates answer relevancy for non-empty answers,
+faithfulness and contextual relevancy only when the agent returned real
+retrieval context, and customer-support correctness only when `expected_output`
+is provided. Precision and recall remain unavailable until the dataset has gold
+evidence and ranking labels. Metrics requiring unavailable inputs are marked
+`skipped`. Without judge credentials,
+the agent still runs and metrics are skipped with an explicit reason. Judge
+metric errors are reported as `judge_error`; agent exceptions are reported as
+`agent_error` with exception details omitted. `DEEPEVAL_ENABLED=false` returns
+`disabled` without invoking the agent; `busy` means a configured in-process
+evaluation slot was unavailable and the agent was not invoked. Phase 3 currently supports the OpenAI
+judge provider via `DEEPEVAL_PROVIDER=openai`, `DEEPEVAL_MODEL`, and
+`DEEPEVAL_JUDGE_API_KEY` (or `OPENAI_API_KEY`).
+
+Outside `local`, `development`, and `test`, evaluation routes fail closed: if
+`DEEPEVAL_API_TOKEN` is unset, they respond as not found; if configured, callers
+must send `Authorization: Bearer <token>`. Keep this token private and configure
+it through the deployment environment, not source control or Postman exports.
+Evaluation request bodies are limited by `DEEPEVAL_MAX_REQUEST_BODY_BYTES`
+(default 131072, maximum configurable 1048576). Judge requests have a configured
+HTTP timeout via `DEEPEVAL_JUDGE_TIMEOUT_SECONDS` (default 30 seconds, accepted
+range 1–300). In-process evaluation concurrency is bounded by
+`DEEPEVAL_MAX_CONCURRENT_EVALUATIONS` (default 2, range 1–8); when at capacity,
+single-case calls return a `busy` status without invoking the agent, while a
+dataset run records the affected case as skipped. Use a reverse proxy/server
+request timeout and durable job queue for deployments where FastAPI
+BackgroundTasks cannot meet reliability requirements.
+
+The seeded synthetic dataset is in `data/evaluation_cases.json` (32 cases: 8
+policy, 8 tool lookup, 4 mixed, 4 unknown/fallback, and 8 safety). The policy
+cases intentionally capture the observed conflict between the policy PDF's
+controlled-draft cover and its `approved: true` registry flag; they do not
+assert those policy terms as verified. Cases use only fictional local records.
+Case creation writes to this JSON file, so use a unique `case_id` when adding
+cases.
+
+Import `postman/customer_support_evaluation.postman_collection.json` into
+Postman to test all implemented evaluation endpoints, including a product lookup
+through the real agent path, read-only cancellation preview, cross-customer order
+privacy, and representative valid, invalid, filtered, and duplicate-case
+requests, dataset-run acceptance, run summary, and per-case reports. After the
+dataset-run request, use its saved `runId` for the report requests. Start the API locally and keep `baseUrl` set to
+`http://127.0.0.1:8000`. LLM judge metrics make external API calls and may incur
+provider charges when judge credentials are configured.
+
 ## Requirements
 
 - Python 3.10 or later
