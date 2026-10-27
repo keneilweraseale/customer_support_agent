@@ -8,6 +8,7 @@ from app.storage.models import (
     CancellationReasonCode,
     CancellationToolInput,
     ConfirmCancellationInput,
+    CustomerOrdersToolInput,
     OrderToolInput,
     ProductToolInput,
     ReviewSearchInput,
@@ -33,6 +34,19 @@ def _get_order_status(order_id: str, customer_id: str) -> dict[str, object]:
         "created_at": _date(order.created_at),
         "updated_at": _date(order.updated_at),
     }
+
+
+def _find_customer_orders(customer_id: str) -> dict[str, object]:
+    orders = [
+        {
+            "order_id": order.order_id,
+            "order_status": order.order_status,
+            "created_at": _date(order.created_at),
+        }
+        for order in repository.get_orders()
+        if order.customer_id == customer_id
+    ]
+    return {"found": bool(orders), "orders": orders}
 
 
 def _get_delivery_status(order_id: str, customer_id: str) -> dict[str, object]:
@@ -165,6 +179,12 @@ get_order_status_tool = StructuredTool.from_function(
     description="Look up the status of an order owned by the supplied customer.",
     args_schema=OrderToolInput,
 )
+find_customer_orders_tool = StructuredTool.from_function(
+    func=_find_customer_orders,
+    name="find_customer_orders",
+    description="Find order references belonging to the supplied verified customer.",
+    args_schema=CustomerOrdersToolInput,
+)
 get_delivery_status_tool = StructuredTool.from_function(
     func=_get_delivery_status,
     name="get_delivery_status",
@@ -204,6 +224,7 @@ cancel_order_tool = StructuredTool.from_function(
 
 customer_support_tools: list[StructuredTool] = [
     get_order_status_tool,
+    find_customer_orders_tool,
     get_delivery_status_tool,
     get_payment_status_tool,
     check_product_availability_tool,

@@ -25,12 +25,14 @@ class FakeTool:
 def make_policy_answer(
     answer: str = "The fictional refund policy says to contact support.",
     sources: list[dict[str, str]] | None = None,
+    needs_human_support: bool = False,
 ) -> PolicyAnswer:
     return PolicyAnswer(
         answer=answer,
         route="rag",
         sources=sources or [],
         retrieval=HybridSearchResult([], False, None, False),
+        needs_human_support=needs_human_support,
     )
 
 
@@ -77,7 +79,7 @@ def make_orchestrator(policy_answer=None, product_result=None) -> tuple[ChatOrch
                 "available": True,
                 "stock_quantity": 24,
                 "price": 18.5,
-                "currency": "USD",
+                "currency": "ZAR",
                 "warranty_summary": "Fictional one-year warranty.",
             }
         ),
@@ -99,6 +101,17 @@ def make_orchestrator(policy_answer=None, product_result=None) -> tuple[ChatOrch
                 "confirmation_token": "demo-token",
             }
         ),
+        "customer_orders": FakeTool(
+            {
+                "found": True,
+                "orders": [
+                    {
+                        "order_id": "ORD-1002",
+                        "order_status": "shipped",
+                    }
+                ],
+            }
+        ),
     }
     policy_calls: list[str] = []
     configured_policy = policy_answer
@@ -117,6 +130,7 @@ def make_orchestrator(policy_answer=None, product_result=None) -> tuple[ChatOrch
         review_tool=tools["review"],
         cancellation_tool=tools["cancellation"],
         policy_answer=policy_answer,
+        customer_orders_tool=tools["customer_orders"],
     )
     return orchestrator, tools, policy_calls
 
@@ -129,6 +143,20 @@ def test_classifier_selects_supported_route_types() -> None:
     assert classify_message("Is PROD-001 in stock?").route == ChatRoute.PRODUCT
     assert classify_message("Reviews for PROD-001").route == ChatRoute.REVIEWS
     assert classify_message("Cancel ORD-1001").route == ChatRoute.CANCELLATION
+    assert (
+        classify_message(
+            "My order ORD-1001 was cancelled but I want my money back after being charged."
+        ).route
+        == ChatRoute.BILLING_ISSUE
+    )
+    assert (
+        classify_message(
+            "My delivery has not arrived and I don't remember the order number."
+        ).route
+        == ChatRoute.DELIVERY
+    )
+    assert classify_message("What is the capital of France?").route == ChatRoute.OUT_OF_SCOPE
+    assert classify_message("Hello there!").route == ChatRoute.GREETING
     assert classify_message("What is the cancellation policy?").route == ChatRoute.POLICY
     assert classify_message("How do I cancel an order?").route == ChatRoute.POLICY
     assert (
@@ -140,6 +168,95 @@ def test_classifier_selects_supported_route_types() -> None:
         classify_message("Where are ORD-1001 and ORD-1002?").route
         == ChatRoute.CLARIFICATION
     )
+
+
+def test_unrelated_question_gets_friendly_scope_response_without_rag() -> None:
+    orchestrator, tools, policy_calls = make_orchestrator()
+
+    result = orchestrator.handle("What is the capital of France?")
+
+    assert result.route == ChatRoute.OUT_OF_SCOPE
+    assert "can’t answer general questions" in result.answer
+    assert "orders, deliveries, payments" in result.answer
+    assert result.needs_human_support is False
+    assert policy_calls == []
+    assert all(not tool.calls for tool in tools.values())
+
+
+def test_greeting_is_friendly_and_store_focused() -> None:
+    orchestrator, _, _ = make_orchestrator()
+
+    result = orchestrator.handle("Hello there!")
+
+    assert result.route == ChatRoute.GREETING
+    assert result.answer.startswith("Hi!")
+    assert "orders, deliveries, payments" in result.answer
+
+
+def test_cancelled_and_paid_order_is_checked_and_escalated() -> None:
+    orchestrator, tools, _ = make_orchestrator()
+    tools["order"].result["order_status"] = "cancelled"
+    tools["order"].result["updated_at"] = "2026-10-23T05:38:21Z"
+    tools["payment"].result["payments"][0]["updated_at"] = "2026-10-20T10:16:00Z"
+
+    result = orchestrator.handle(
+        "My order ORD-1001 was cancelled but I was charged. I want my money back.",
+        "CUS-DEMO-001",
+    )
+
+    assert result.route == ChatRoute.BILLING_ISSUE
+    assert "marked cancelled" in result.answer
+    assert "order record last updated 2026-10-23" in result.answer
+    assert "PAY-1001" in result.answer
+    assert "recorded as paid" in result.answer
+    assert "updated 2026-10-20" in result.answer
+    assert "can’t issue a refund directly" in result.answer
+    assert result.needs_human_support is True
+    assert tools["order"].calls == [
+        {"order_id": "ORD-1001", "customer_id": "CUS-DEMO-001"}
+    ]
+    assert tools["payment"].calls == [
+        {"order_id": "ORD-1001", "customer_id": "CUS-DEMO-001"}
+    ]
+    assert not tools["cancellation"].calls
+
+
+def test_billing_issue_escalates_when_payment_record_is_unavailable() -> None:
+    from langchain_core.tools.base import ToolException
+
+    orchestrator, tools, _ = make_orchestrator()
+    tools["order"].result["order_status"] = "cancelled"
+    tools["payment"].error = ToolException("payment store unavailable")
+
+    result = orchestrator.handle(
+        "My order ORD-1001 was cancelled but I was charged. I want a refund.",
+        "CUS-DEMO-001",
+    )
+
+    assert "couldn’t access its payment record" in result.answer
+    assert result.needs_human_support is True
+    assert "recorded as paid" not in result.answer
+
+
+def test_delivery_without_order_number_searches_verified_customer_orders() -> None:
+    orchestrator, tools, _ = make_orchestrator()
+
+    result = orchestrator.handle(
+        "I ordered something last week, it hasn't arrived, and support keeps "
+        "ignoring me. I don't remember the order number. Can you find it and "
+        "escalate this?",
+        "CUS-DEMO-002",
+        "ORD-1001",
+    )
+
+    assert result.route == ChatRoute.DELIVERY
+    assert "found order ORD-1002" in result.answer
+    assert "SHIP-1001" in result.answer
+    assert result.needs_human_support is True
+    assert tools["customer_orders"].calls == [{"customer_id": "CUS-DEMO-002"}]
+    assert tools["delivery"].calls == [
+        {"order_id": "ORD-1002", "customer_id": "CUS-DEMO-002"}
+    ]
 
 
 def test_policy_route_uses_rag_and_returns_sources() -> None:

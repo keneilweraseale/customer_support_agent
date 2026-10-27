@@ -18,6 +18,7 @@ from app.storage.models import (
     PolicyDocument,
     Product,
     Review,
+    SupportTicket,
 )
 from app.storage.repository import SupportRepository
 
@@ -157,6 +158,18 @@ class JsonRepository(SupportRepository):
                 raise DataStoreError("Cancellation event ID already exists.")
             events.append(event)
             self._write_records("cancellation_history.json", events)
+
+    def append_support_ticket(self, ticket: SupportTicket) -> None:
+        with self._write_lock:
+            tickets = self._read_optional_records(
+                "support_tickets.json",
+                SupportTicket,
+                "ticket_id",
+            )
+            if any(existing.ticket_id == ticket.ticket_id for existing in tickets):
+                raise DataStoreError("Support ticket ID already exists.")
+            tickets.append(ticket)
+            self._write_records("support_tickets.json", tickets)
 
     def update_cancellation_event(self, event: CancellationEvent) -> None:
         with self._write_lock:

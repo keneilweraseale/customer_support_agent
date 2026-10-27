@@ -90,6 +90,17 @@ class CancellationEvent(RecordModel):
     ]
 
 
+class SupportTicket(RecordModel):
+    ticket_id: Annotated[
+        str,
+        StringConstraints(min_length=1, max_length=64),
+    ]
+    conversation_id: Annotated[str, StringConstraints(min_length=1, max_length=100)]
+    customer_message: Annotated[str, StringConstraints(min_length=1, max_length=2000)]
+    status: Literal["open"] = "open"
+    created_at: datetime
+
+
 class OrderItem(RecordModel):
     product_id: Identifier
     quantity: int = Field(gt=0)
@@ -202,6 +213,10 @@ class OrderToolInput(RecordModel):
 
 class ProductToolInput(RecordModel):
     product_id: Identifier = Field(description="The product reference.")
+
+
+class CustomerOrdersToolInput(RecordModel):
+    customer_id: Identifier = Field(description="The verified demo customer ID.")
 
 
 class CancellationToolInput(OrderToolInput):

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.rag.generation import GenerationError
+from app.rag.generation import HUMAN_SUPPORT_MARKER, GenerationError
 from app.rag.retrieval import (
     HybridPolicyRetriever,
     cosine_similarity,
@@ -256,6 +256,23 @@ def test_service_generates_grounded_answer_with_source_metadata() -> None:
     ]
 
 
+def test_service_marks_model_indicated_unresolved_answer_for_escalation() -> None:
+    document = make_document()
+    chunk = make_chunk("refund-1", document, "refund within thirty days", [])
+    service = PolicyAnswerService(
+        HybridPolicyRetriever(
+            MemoryRepository([document], [chunk]),
+            FakeEmbedder([1.0, 0.0]),
+        ),
+        FakeGenerator(f"{HUMAN_SUPPORT_MARKER}I can’t verify this exception."),
+    )
+
+    result = service.answer("Can I get a refund outside the return period?")
+
+    assert result.answer == "I can’t verify this exception."
+    assert result.needs_human_support is True
+
+
 def test_service_uses_transparent_fallback_when_evidence_is_missing() -> None:
     document = make_document()
     chunk = make_chunk("refund-1", document, "refund within thirty days", [])
@@ -272,6 +289,7 @@ def test_service_uses_transparent_fallback_when_evidence_is_missing() -> None:
 
     assert result.answer == NO_EVIDENCE_ANSWER
     assert result.sources == []
+    assert result.needs_human_support is True
     assert generator.calls == []
 
 
@@ -289,6 +307,7 @@ def test_service_handles_generation_failure_without_inventing_answer() -> None:
     result = service.answer("What is the refund period?")
 
     assert "can’t generate a reliable answer right now" in result.answer
+    assert result.needs_human_support is True
     assert result.sources[0]["chunk_id"] == "refund-1"
 
 

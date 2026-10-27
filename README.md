@@ -40,6 +40,22 @@ This repository implements the customer-support agent described in
   `data/cancellation_history.json`. Demo cancellation history expires after
   365 days by default. These retention values are configurable through
   `JsonRepository`; confirm business retention requirements before production.
+- **Human support escalation:** When policy evidence is missing, the model
+  marks an answer as unverifiable, or answer generation fails, chat creates an
+  open ticket in `data/support_tickets.json` and offers the configured WhatsApp
+  and email links. Sensitive patterns in the saved question are redacted.
+  Tickets are local demo records; contacting support is still initiated by the
+  customer using one of the links. Configure `SUPPORT_WHATSAPP_NUMBER`,
+  `SUPPORT_EMAIL`, and optionally `SUPPORT_PHONE` in `.env` for the displayed
+  contact methods.
+- **Conversational scope and issue handling:** General questions outside
+  store/e-commerce support are politely declined rather than answered with
+  generic advice. Delivery complaints without an order number can search only
+  the verified customer's own orders. Cancelled-order charge/refund complaints
+  check both order and payment records, then create a support ticket when human
+  investigation is needed. The assistant does not claim that a refund was
+  issued or that a human was contacted; tickets are local demo records and the
+  customer chooses a listed support channel to contact the team.
 
 Phase 2 tools are available through chat routing but are not separate HTTP
 endpoints apart from cancellation confirmation. The demo verification endpoint
@@ -49,6 +65,7 @@ not connect it to real customer data.
 
 The records in `data/` are fictional test data. They are not real customer,
 payment, product, delivery, or review records.
+Demo order and product prices use South African rand (ZAR).
 
 ## Requirements
 

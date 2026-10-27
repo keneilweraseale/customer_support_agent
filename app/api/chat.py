@@ -1,4 +1,8 @@
+import os
+import re
+from datetime import datetime, timezone
 from typing import Annotated
+from urllib.parse import quote, urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
@@ -10,12 +14,17 @@ from app.agent.router import (
     ORDER_ID_PATTERN,
     build_default_orchestrator,
     classify_message,
+    requests_order_search,
 )
 from app.rag.providers import ProviderConfigurationError
-from app.services.conversation_memory import ConversationMemoryService
+from app.services.conversation_memory import (
+    ConversationMemoryService,
+    sanitize_sensitive_text,
+)
 from app.services.demo_authorization import demo_authorization_service
 from app.agent.tools import repository as support_repository
 from app.storage.json_store import ConversationOwnershipError, DataStoreError
+from app.storage.models import SupportTicket
 
 router = APIRouter(prefix="/api", tags=["chat"])
 orchestrator = build_default_orchestrator()
@@ -57,8 +66,9 @@ class ChatResponse(BaseModel):
     answer: str
     route: str
     sources: list[dict[str, str]]
-    actions: list[dict[str, str]]
+    actions: list[dict[str, object]]
     needs_confirmation: bool = False
+    needs_human_support: bool = False
     memory: MemoryDiagnostics
 
 
@@ -72,6 +82,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         ChatRoute.DELIVERY,
         ChatRoute.PAYMENT,
         ChatRoute.CANCELLATION,
+        ChatRoute.BILLING_ISSUE,
     }:
         if request.authorization_token is None:
             raise HTTPException(
@@ -112,8 +123,10 @@ async def chat(request: ChatRequest) -> ChatResponse:
             ChatRoute.DELIVERY,
             ChatRoute.PAYMENT,
             ChatRoute.CANCELLATION,
+            ChatRoute.BILLING_ISSUE,
         }
         and decision.order_id is None
+        and not requests_order_search(request.message)
     )
     try:
         result = await run_in_threadpool(
@@ -128,6 +141,32 @@ async def chat(request: ChatRequest) -> ChatResponse:
             detail="This support feature is not configured. Please contact support.",
         ) from exc
 
+    actions = list(result.actions)
+    answer = result.answer
+    if result.needs_human_support:
+        ticket_id = f"SUP-{uuid4().hex[:12].upper()}"
+        ticket = SupportTicket(
+            ticket_id=ticket_id,
+            conversation_id=conversation_id,
+            customer_message=sanitize_sensitive_text(request.message),
+            created_at=datetime.now(timezone.utc),
+        )
+        try:
+            await run_in_threadpool(support_repository.append_support_ticket, ticket)
+        except DataStoreError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="A support ticket could not be created. Please contact support directly.",
+            ) from exc
+        answer = f"{answer}\n\nI’ve created support ticket {ticket_id} for follow-up."
+        actions.append(
+            {
+                "type": "support_ticket",
+                "ticket_id": ticket_id,
+                "channels": _support_contact_channels(ticket_id),
+            }
+        )
+
     if customer_id is not None and request.memory_enabled:
         explicit_order_match = ORDER_ID_PATTERN.search(request.message)
         last_order_id = (
@@ -141,7 +180,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 conversation_id,
                 customer_id,
                 request.message,
-                result.answer,
+                answer,
                 last_order_id,
                 memory,
             )
@@ -154,7 +193,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
                     conversation_id,
                     customer_id,
                     request.message,
-                    result.answer,
+                    answer,
                     last_order_id,
                     None,
                 )
@@ -171,13 +210,63 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
     return ChatResponse(
         conversation_id=conversation_id,
-        answer=result.answer,
+        answer=answer,
         route=result.route.value,
         sources=result.sources,
-        actions=result.actions,
+        actions=actions,
         needs_confirmation=result.needs_confirmation,
+        needs_human_support=result.needs_human_support,
         memory=MemoryDiagnostics(
             short_term_used=memory_context_used,
             long_term_record_created=result.long_term_record_created,
         ),
     )
+
+
+def _support_contact_channels(ticket_id: str) -> list[dict[str, str]]:
+    channels = []
+    whatsapp_number = os.environ.get(
+        "SUPPORT_WHATSAPP_NUMBER",
+        "+27670821714",
+    ).strip()
+    whatsapp_digits = re.sub(r"\D", "", whatsapp_number)
+    if whatsapp_digits:
+        whatsapp_text = quote(f"Please help with support ticket {ticket_id}.")
+        channels.append(
+            {
+                "type": "whatsapp",
+                "label": "WhatsApp support",
+                "url": f"https://wa.me/{whatsapp_digits}?text={whatsapp_text}",
+            }
+        )
+
+    support_email = os.environ.get(
+        "SUPPORT_EMAIL",
+        "franciskgomo34@icloud.com",
+    ).strip()
+    if support_email:
+        email_query = urlencode(
+            {
+                "subject": f"Support ticket {ticket_id}",
+                "body": f"Please help with support ticket {ticket_id}.",
+            }
+        )
+        channels.append(
+            {
+                "type": "email",
+                "label": "Email support",
+                "url": f"mailto:{quote(support_email, safe='@.+-')}?{email_query}",
+            }
+        )
+
+    support_phone = os.environ.get("SUPPORT_PHONE", "").strip()
+    phone_digits = re.sub(r"\D", "", support_phone)
+    if phone_digits:
+        channels.append(
+            {
+                "type": "call",
+                "label": "Call support",
+                "url": f"tel:+{phone_digits}",
+            }
+        )
+    return channels

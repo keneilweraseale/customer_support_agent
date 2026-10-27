@@ -10,6 +10,7 @@ from app.agent import tools as agent_tools
 from app.agent.tools import (
     cancel_order_tool,
     check_product_availability_tool,
+    find_customer_orders_tool,
     get_delivery_status_tool,
     get_order_status_tool,
     get_payment_status_tool,
@@ -100,6 +101,19 @@ def test_payment_tool_does_not_return_provider_reference() -> None:
     assert result["payments"][0]["payment_status"] == "failed"
     assert result["payments"][0]["error_code"] == "DEMO_PAYMENT_DECLINED"
     assert "provider_reference" not in result["payments"][0]
+
+
+def test_customer_orders_tool_returns_only_verified_customer_orders() -> None:
+    result = find_customer_orders_tool.invoke({"customer_id": "CUS-DEMO-002"})
+
+    assert result["found"] is True
+    assert result["orders"] == [
+        {
+            "order_id": "ORD-1002",
+            "order_status": "shipped",
+            "created_at": "2026-10-18T09:00:00+00:00",
+        }
+    ]
 
 
 def test_product_tool_returns_available_and_missing_results() -> None:

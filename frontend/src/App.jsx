@@ -99,7 +99,9 @@ export default function App() {
                 ...message,
                 text: response.answer,
                 pending: false,
-                status: routeStatus(response.route),
+                status: response.needs_human_support
+                  ? "Escalated to human support"
+                  : routeStatus(response.route),
                 sources: response.sources ?? [],
                 actions: (response.actions ?? []).map((action) =>
                   action.type === "confirm_cancellation"

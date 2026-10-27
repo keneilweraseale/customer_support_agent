@@ -1,0 +1,9 @@
+[
+  {
+    "ticket_id": "SUP-0738300D0849",
+    "conversation_id": "9cc79fd0-e50c-4b33-b91a-00f99b623eca",
+    "customer_message": "My order ORD-1002 is marked cancelled, but my bank account was charged. I want my money back. The cancellation happened days ago, so don't tell me to wait without checking anything.",
+    "status": "open",
+    "created_at": "2026-10-27T06:12:26.829399Z"
+  }
+]

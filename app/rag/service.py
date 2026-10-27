@@ -6,6 +6,7 @@ from app.rag.generation import (
     AnswerGenerator,
     GenerationError,
     GroqGroundedAnswerGenerator,
+    HUMAN_SUPPORT_MARKER,
 )
 from app.rag.providers import (
     ProviderConfigurationError,
@@ -26,6 +27,7 @@ class PolicyAnswer:
     route: str
     sources: list[dict[str, str]]
     retrieval: HybridSearchResult
+    needs_human_support: bool = False
 
 
 class PolicyAnswerService:
@@ -49,16 +51,35 @@ class PolicyAnswerService:
                 route="rag",
                 sources=[],
                 retrieval=search_result,
+                needs_human_support=True,
             )
 
+        needs_human_support = False
         try:
             answer = self._generator.generate(question, search_result.results)
+            needs_human_support = answer.startswith(HUMAN_SUPPORT_MARKER) or any(
+                phrase in answer.casefold()
+                for phrase in (
+                    "cannot verify",
+                    "can't verify",
+                    "can’t verify",
+                    "insufficient evidence",
+                    "evidence is insufficient",
+                    "not enough information",
+                    "unable to determine",
+                    "couldn’t find enough information",
+                    "couldn't find enough information",
+                )
+            )
+            if needs_human_support:
+                answer = answer.removeprefix(HUMAN_SUPPORT_MARKER).lstrip()
         except GenerationError:
             logger.exception("Grounded policy answer generation failed.")
             answer = (
                 "I found relevant approved policy information but can’t generate a "
                 "reliable answer right now. Please contact support for help."
             )
+            needs_human_support = True
 
         source_map: dict[str, dict[str, str]] = {}
         for result in search_result.results:
@@ -73,6 +94,7 @@ class PolicyAnswerService:
             route="rag",
             sources=list(source_map.values()),
             retrieval=search_result,
+            needs_human_support=needs_human_support,
         )
 
 
@@ -101,6 +123,7 @@ def answer_policy_question(question: str) -> PolicyAnswer:
                 vector_error="no_valid_approved_chunks",
                 bm25_available=False,
             ),
+            needs_human_support=True,
         )
 
     embedder = embedder_from_environment(required=False)
@@ -112,6 +135,7 @@ def answer_policy_question(question: str) -> PolicyAnswer:
             route="rag",
             sources=[],
             retrieval=search_result,
+            needs_human_support=True,
         )
 
     groq_key = os.environ.get("GROQ_API_KEY", "").strip()

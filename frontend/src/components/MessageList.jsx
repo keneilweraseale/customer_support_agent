@@ -34,6 +34,11 @@ export default function MessageList({
               }}
             >
               {message.text}
+              {message.actions?.find((action) => action.type === "support_ticket") && (
+                <SupportTicketActions
+                  action={message.actions.find((item) => item.type === "support_ticket")}
+                />
+              )}
               {message.error && (
                 <button onClick={() => onRetry(message.retryText)} style={styles.retry} type="button">
                   Retry
@@ -118,6 +123,27 @@ const quickActions = [
   "Contact support",
 ];
 
+function SupportTicketActions({ action }) {
+  return (
+    <section aria-label="Contact human support" style={styles.supportActions}>
+      <strong>Ticket {action.ticket_id}</strong>
+      <div style={styles.supportLinks}>
+        {action.channels.map((channel) => (
+          <a
+            key={channel.type}
+            href={channel.url}
+            rel="noreferrer"
+            style={styles.supportLink}
+            target="_blank"
+          >
+            {channel.label}
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 const styles = {
   scroller: { flex: 1, minHeight: 0, overflowY: "auto", padding: "24px 20px" },
   list: { margin: "0 auto", maxWidth: 760 },
@@ -152,6 +178,23 @@ const styles = {
     marginTop: 8,
     padding: 0,
     textDecoration: "underline",
+  },
+  supportActions: {
+    borderTop: "1px solid #E2E8F0",
+    color: "#334155",
+    fontSize: 13,
+    marginTop: 12,
+    paddingTop: 10,
+  },
+  supportLinks: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 },
+  supportLink: {
+    background: "#EFF6FF",
+    border: "1px solid #BFDBFE",
+    borderRadius: 8,
+    color: "#1D4ED8",
+    fontWeight: 600,
+    padding: "7px 10px",
+    textDecoration: "none",
   },
   quickActions: { display: "flex", flexWrap: "wrap", gap: 9, margin: "18px 0 24px" },
   chip: {

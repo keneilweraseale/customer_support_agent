@@ -18,11 +18,13 @@ def isolate_chat_memory(monkeypatch, tmp_path) -> None:
     from app.services.conversation_memory import ConversationMemoryService
     from app.storage.json_store import JsonRepository
 
+    repository = JsonRepository(tmp_path)
     monkeypatch.setattr(
         chat_api,
         "conversation_memory_service",
-        ConversationMemoryService(JsonRepository(tmp_path)),
+        ConversationMemoryService(repository),
     )
+    monkeypatch.setattr(chat_api, "support_repository", repository)
 
 
 def test_health_returns_json_success() -> None:
@@ -83,11 +85,61 @@ def test_chat_returns_grounded_policy_answer(monkeypatch) -> None:
         ],
         "actions": [],
         "needs_confirmation": False,
+        "needs_human_support": False,
         "memory": {
             "short_term_used": False,
             "long_term_record_created": False,
         },
     }
+
+
+def test_unresolved_chat_creates_ticket_and_returns_support_links(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    class FakeOrchestrator:
+        def handle(self, message, customer_id=None, context_order_id=None):
+            del message, customer_id, context_order_id
+            return OrchestratedChatResult(
+                answer="I couldn’t verify the refund answer.",
+                route=ChatRoute.POLICY,
+                sources=[],
+                actions=[],
+                needs_human_support=True,
+            )
+
+    monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
+    monkeypatch.setenv("SUPPORT_WHATSAPP_NUMBER", "+27670821714")
+    monkeypatch.setenv("SUPPORT_EMAIL", "franciskgomo34@icloud.com")
+    monkeypatch.setenv("SUPPORT_PHONE", "")
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "Can I get a refund for my order? Card 4111 1111 1111 1111",
+            "conversation_id": "demo-refund-escalation",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["needs_human_support"] is True
+    assert "support ticket SUP-" in data["answer"]
+    ticket_action = data["actions"][0]
+    assert ticket_action["type"] == "support_ticket"
+    assert [channel["type"] for channel in ticket_action["channels"]] == [
+        "whatsapp",
+        "email",
+    ]
+    assert ticket_action["channels"][0]["url"].startswith("https://wa.me/27670821714?")
+    assert ticket_action["channels"][1]["url"].startswith(
+        "mailto:franciskgomo34@icloud.com?"
+    )
+    tickets = (tmp_path / "support_tickets.json").read_text(encoding="utf-8")
+    assert "Can I get a refund for my order?" in tickets
+    assert "[redacted]" in tickets
+    assert "4111 1111 1111 1111" not in tickets
+    assert ticket_action["ticket_id"] in tickets
 
 
 def test_chat_generates_conversation_id_when_omitted(monkeypatch) -> None:
@@ -138,6 +190,19 @@ def test_chat_resolves_demo_token_before_passing_customer_to_orchestrator(monkey
     assert response.status_code == 200
     assert calls == [("Where is order ORD-1001?", "CUS-DEMO-001", None)]
     assert response.json()["route"] == "order_tool"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "My order ORD-1001 was cancelled but I was charged and want my money back.",
+        "I ordered something last week, it has not arrived. I don't remember the order number.",
+    ],
+)
+def test_private_issue_lookups_require_demo_verification(message: str) -> None:
+    response = client.post("/api/chat", json={"message": message})
+
+    assert response.status_code == 401
 
 
 def test_chat_runs_order_lookup_through_default_tool_orchestrator(monkeypatch) -> None:

@@ -37,5 +37,31 @@
     "outcome": "ineligible",
     "outcome_at": "2026-10-23T05:40:08.212144Z",
     "actor": "system"
+  },
+  {
+    "event_id": "CAN-EVT-7c907a6c76dd4ca5b42315bd8fa79d91",
+    "request_id": "47f36911-5286-462f-8db5-85e004558865",
+    "order_id": "ORD-1001",
+    "customer_id": "CUS-DEMO-001",
+    "reason_code": "not_provided",
+    "reason_text": null,
+    "requested_at": "2026-10-26T09:28:51.848428Z",
+    "eligibility_result": "ineligible",
+    "outcome": "ineligible",
+    "outcome_at": "2026-10-26T09:28:51.848428Z",
+    "actor": "system"
+  },
+  {
+    "event_id": "CAN-EVT-2ab064d8c90f44658c5dcc7de9541f90",
+    "request_id": "34ad8437-7289-4aa9-891b-1bb8fe692b24",
+    "order_id": "ORD-1001",
+    "customer_id": "CUS-DEMO-001",
+    "reason_code": "not_provided",
+    "reason_text": null,
+    "requested_at": "2026-10-26T12:46:36.288732Z",
+    "eligibility_result": "ineligible",
+    "outcome": "ineligible",
+    "outcome_at": "2026-10-26T12:46:36.288732Z",
+    "actor": "system"
   }
 ]

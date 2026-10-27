@@ -11,6 +11,7 @@ from app.storage.models import (
     PolicyDocument,
     Product,
     Review,
+    SupportTicket,
 )
 
 
@@ -31,6 +32,8 @@ class SupportRepository(Protocol):
     def append_cancellation_event(self, event: CancellationEvent) -> None: ...
 
     def update_cancellation_event(self, event: CancellationEvent) -> None: ...
+
+    def append_support_ticket(self, ticket: SupportTicket) -> None: ...
 
     def expire_old_cancellation_events(
         self,

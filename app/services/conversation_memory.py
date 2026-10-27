@@ -41,12 +41,12 @@ class ConversationMemoryService:
             [
                 ConversationTurn(
                     role="user",
-                    text=_sanitize_text(user_text),
+                    text=sanitize_sensitive_text(user_text),
                     created_at=now,
                 ),
                 ConversationTurn(
                     role="assistant",
-                    text=_sanitize_text(assistant_text),
+                    text=sanitize_sensitive_text(assistant_text),
                     created_at=now,
                 ),
             ]
@@ -63,7 +63,7 @@ class ConversationMemoryService:
         return self._repository.save_conversation_memory(memory)
 
 
-def _sanitize_text(text: str) -> str:
+def sanitize_sensitive_text(text: str) -> str:
     sanitized = _SENSITIVE_ASSIGNMENT.sub("[redacted]", text)
     sanitized = _OPAQUE_TOKEN.sub("[redacted]", sanitized)
     sanitized = _BEARER_TOKEN.sub("[redacted]", sanitized)
