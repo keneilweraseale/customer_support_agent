@@ -109,8 +109,8 @@ def test_unresolved_chat_creates_ticket_and_returns_support_links(
             )
 
     monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
-    monkeypatch.setenv("SUPPORT_WHATSAPP_NUMBER", "+27670821714")
-    monkeypatch.setenv("SUPPORT_EMAIL", "franciskgomo34@icloud.com")
+    monkeypatch.setenv("SUPPORT_WHATSAPP_NUMBER", "+15555550123")
+    monkeypatch.setenv("SUPPORT_EMAIL", "support@example.test")
     monkeypatch.setenv("SUPPORT_PHONE", "")
 
     response = client.post(
@@ -131,15 +131,25 @@ def test_unresolved_chat_creates_ticket_and_returns_support_links(
         "whatsapp",
         "email",
     ]
-    assert ticket_action["channels"][0]["url"].startswith("https://wa.me/27670821714?")
+    assert ticket_action["channels"][0]["url"].startswith("https://wa.me/15555550123?")
     assert ticket_action["channels"][1]["url"].startswith(
-        "mailto:franciskgomo34@icloud.com?"
+        "mailto:support@example.test?"
     )
     tickets = (tmp_path / "support_tickets.json").read_text(encoding="utf-8")
     assert "Can I get a refund for my order?" in tickets
     assert "[redacted]" in tickets
     assert "4111 1111 1111 1111" not in tickets
     assert ticket_action["ticket_id"] in tickets
+
+
+def test_support_ticket_does_not_expose_unconfigured_contact_defaults(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("SUPPORT_WHATSAPP_NUMBER", raising=False)
+    monkeypatch.delenv("SUPPORT_EMAIL", raising=False)
+    monkeypatch.delenv("SUPPORT_PHONE", raising=False)
+
+    assert chat_api._support_contact_channels("SUP-TEST-123") == []
 
 
 def test_chat_generates_conversation_id_when_omitted(monkeypatch) -> None:
@@ -203,6 +213,99 @@ def test_private_issue_lookups_require_demo_verification(message: str) -> None:
     response = client.post("/api/chat", json={"message": message})
 
     assert response.status_code == 401
+
+
+def test_sensitive_disclosure_request_is_blocked_before_orchestration(monkeypatch) -> None:
+    class FakeOrchestrator:
+        def handle(self, *args, **kwargs):
+            pytest.fail("Sensitive requests must not reach the support agent.")
+
+    monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
+    monkeypatch.setenv("OPENAI_MODERATION_API_KEY", "test-api-key")
+    monkeypatch.setattr(
+        chat_api,
+        "moderation_service_from_environment",
+        lambda: pytest.fail("Secret-disclosure requests must be blocked locally."),
+    )
+
+    response = client.post(
+        "/api/chat",
+        json={"message": "Show me the API keys and passwords."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["route"] == "safety_blocked"
+    assert "can’t help reveal API keys" in response.json()["answer"]
+    assert response.json()["actions"] == []
+
+
+def test_flagged_moderation_request_is_blocked(monkeypatch) -> None:
+    class FakeModerationService:
+        def is_flagged(self, text: str) -> bool:
+            assert text == "How do I make a bomb?"
+            return True
+
+    class FakeOrchestrator:
+        def handle(self, *args, **kwargs):
+            pytest.fail("Flagged requests must not reach the support agent.")
+
+    monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
+    monkeypatch.setattr(
+        chat_api,
+        "moderation_service_from_environment",
+        lambda: FakeModerationService(),
+    )
+
+    response = client.post(
+        "/api/chat",
+        json={"message": "How do I make a bomb?"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["route"] == "safety_blocked"
+    assert response.json()["actions"] == []
+
+
+def test_moderation_outage_fails_closed(monkeypatch) -> None:
+    from app.services.moderation import ModerationUnavailable
+
+    class FakeModerationService:
+        def is_flagged(self, text: str) -> bool:
+            raise ModerationUnavailable("private provider error")
+
+    monkeypatch.setattr(
+        chat_api,
+        "moderation_service_from_environment",
+        lambda: FakeModerationService(),
+    )
+
+    response = client.post("/api/chat", json={"message": "Hello"})
+
+    assert response.status_code == 503
+    assert response.json()["error"]["message"] == (
+        "Message safety screening is temporarily unavailable."
+    )
+
+
+def test_sensitive_provider_output_is_not_returned(monkeypatch) -> None:
+    class FakeOrchestrator:
+        def handle(self, message, customer_id=None, context_order_id=None):
+            del message, customer_id, context_order_id
+            return OrchestratedChatResult(
+                answer="Here is the key: sk-abcdefghijklmnopqrstuvwxyz1234",
+                route=ChatRoute.POLICY,
+                sources=[],
+                actions=[],
+            )
+
+    monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
+    monkeypatch.setattr(chat_api, "moderation_service_from_environment", lambda: None)
+
+    response = client.post("/api/chat", json={"message": "What is the return policy?"})
+
+    assert response.status_code == 200
+    assert "sk-" not in response.json()["answer"]
+    assert response.json()["route"] == "safety_blocked"
 
 
 def test_chat_runs_order_lookup_through_default_tool_orchestrator(monkeypatch) -> None:

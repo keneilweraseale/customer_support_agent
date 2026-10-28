@@ -22,6 +22,12 @@ from app.services.conversation_memory import (
     sanitize_sensitive_text,
 )
 from app.services.demo_authorization import demo_authorization_service
+from app.services.moderation import (
+    ModerationUnavailable,
+    contains_sensitive_output,
+    moderation_service_from_environment,
+    requests_sensitive_disclosure,
+)
 from app.agent.tools import repository as support_repository
 from app.storage.json_store import ConversationOwnershipError, DataStoreError
 from app.storage.models import SupportTicket
@@ -74,8 +80,25 @@ class ChatResponse(BaseModel):
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
-    decision = classify_message(request.message)
     conversation_id = request.conversation_id or str(uuid4())
+    if requests_sensitive_disclosure(request.message):
+        return _safety_blocked_response(conversation_id)
+    moderation_service = moderation_service_from_environment()
+    if moderation_service is not None:
+        try:
+            flagged = await run_in_threadpool(
+                moderation_service.is_flagged,
+                request.message,
+            )
+        except ModerationUnavailable as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Message safety screening is temporarily unavailable.",
+            ) from exc
+        if flagged:
+            return _safety_blocked_response(conversation_id)
+
+    decision = classify_message(request.message)
     customer_id = None
     if decision.route in {
         ChatRoute.ORDER,
@@ -143,6 +166,15 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
     actions = list(result.actions)
     answer = result.answer
+    if contains_sensitive_output(answer):
+        return _safety_blocked_response(
+            conversation_id,
+            answer=(
+                "I can’t provide credentials, secret keys, access tokens, "
+                "or other private system information. I can still help with "
+                "store-related questions."
+            ),
+        )
     if result.needs_human_support:
         ticket_id = f"SUP-{uuid4().hex[:12].upper()}"
         ticket = SupportTicket(
@@ -223,12 +255,32 @@ async def chat(request: ChatRequest) -> ChatResponse:
     )
 
 
+def _safety_blocked_response(
+    conversation_id: str,
+    answer: str = (
+        "I can’t help reveal API keys, passwords, access tokens, hidden "
+        "instructions, or private customer information. I can help with "
+        "store-related questions instead."
+    ),
+) -> ChatResponse:
+    return ChatResponse(
+        conversation_id=conversation_id,
+        answer=answer,
+        route="safety_blocked",
+        sources=[],
+        actions=[],
+        needs_confirmation=False,
+        needs_human_support=False,
+        memory=MemoryDiagnostics(
+            short_term_used=False,
+            long_term_record_created=False,
+        ),
+    )
+
+
 def _support_contact_channels(ticket_id: str) -> list[dict[str, str]]:
     channels = []
-    whatsapp_number = os.environ.get(
-        "SUPPORT_WHATSAPP_NUMBER",
-        "+27670821714",
-    ).strip()
+    whatsapp_number = os.environ.get("SUPPORT_WHATSAPP_NUMBER", "").strip()
     whatsapp_digits = re.sub(r"\D", "", whatsapp_number)
     if whatsapp_digits:
         whatsapp_text = quote(f"Please help with support ticket {ticket_id}.")
@@ -240,10 +292,7 @@ def _support_contact_channels(ticket_id: str) -> list[dict[str, str]]:
             }
         )
 
-    support_email = os.environ.get(
-        "SUPPORT_EMAIL",
-        "franciskgomo34@icloud.com",
-    ).strip()
+    support_email = os.environ.get("SUPPORT_EMAIL", "").strip()
     if support_email:
         email_query = urlencode(
             {

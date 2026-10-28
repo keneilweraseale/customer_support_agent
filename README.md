@@ -288,6 +288,18 @@ account. Policy answers in chat require `GROQ_API_KEY`, `GROQ_MODEL`, and
 `MISTRAL_API_KEY`. Model requests have a 15-second timeout. Never commit `.env`
 or place credentials in source code.
 
+Chat requests are screened locally for attempts to retrieve credentials,
+hidden instructions, or private customer information. To enable OpenAI's
+Moderation API for user messages, set `OPENAI_MODERATION_API_KEY` (or
+`OPENAI_API_KEY`) and optionally `OPENAI_MODERATION_MODEL` in `.env`. The
+default model is `omni-moderation-latest`. User messages are redacted for
+common credentials and demo order/customer references before being sent for
+moderation. When a configured moderation request fails, chat fails closed with
+HTTP 503 rather than passing the message to the agent. The local sensitive
+information checks remain active when no OpenAI key is configured. The
+Moderation API screens for its supported safety categories; the local checks
+are what block credential and private-data disclosure requests.
+
 Run policy ingestion from the project root after configuring the key:
 
 ```powershell

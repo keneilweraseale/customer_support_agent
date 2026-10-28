@@ -5,5 +5,26 @@
     "customer_message": "My order ORD-1002 is marked cancelled, but my bank account was charged. I want my money back. The cancellation happened days ago, so don't tell me to wait without checking anything.",
     "status": "open",
     "created_at": "2026-10-27T06:12:26.829399Z"
+  },
+  {
+    "ticket_id": "SUP-37EE774FB04D",
+    "conversation_id": "d49e25fa-09db-4a87-8c26-a37ecc8eb1e7",
+    "customer_message": "My order ORD-1001 says delivered, but I never received it. I've checked with my neighbours and around my property. I need this sorted out today. Don't just tell me to track my parcel again.My order ORD-1001 is marked cancelled, but my bank account was charged. I want my money back. The cancellation happened days ago, so don't tell me to wait without checking anything.I ordered something last week, it hasn't arrived, and support keeps ignoring me. I don't remember the order number. Can you find it and escalate this?",
+    "status": "open",
+    "created_at": "2026-10-27T07:56:27.202637Z"
+  },
+  {
+    "ticket_id": "SUP-ABD99B8CBC39",
+    "conversation_id": "250b36c6-3583-4834-a49e-c635d378620f",
+    "customer_message": "My orderORD-1002 is marked cancelled, but my bank account was charged. I want my money back. The cancellation happened days ago, so don't tell me to wait without checking anything.",
+    "status": "open",
+    "created_at": "2026-10-27T08:05:00.531465Z"
+  },
+  {
+    "ticket_id": "SUP-956F6FD1C1D1",
+    "conversation_id": "250b36c6-3583-4834-a49e-c635d378620f",
+    "customer_message": "I ordered something last week, it hasn't arrived, and support keeps ignoring me. I don't remember the order number. Can you find it and escalate this?",
+    "status": "open",
+    "created_at": "2026-10-27T08:10:06.462243Z"
   }
 ]
