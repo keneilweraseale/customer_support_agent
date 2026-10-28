@@ -42,12 +42,18 @@ This repository implements the customer-support agent described in
   `JsonRepository`; confirm business retention requirements before production.
 - **Human support escalation:** When policy evidence is missing, the model
   marks an answer as unverifiable, or answer generation fails, chat creates an
-  open ticket in `data/support_tickets.json` and offers the configured WhatsApp
-  and email links. Sensitive patterns in the saved question are redacted.
-  Tickets are local demo records; contacting support is still initiated by the
-  customer using one of the links. Configure `SUPPORT_WHATSAPP_NUMBER`,
-  `SUPPORT_EMAIL`, and optionally `SUPPORT_PHONE` in `.env` for the displayed
-  contact methods.
+  open ticket in `data/support_tickets.json` and shows an in-app message form.
+  The signed-in customer can send details directly to the configured support
+  email without opening another app. Sensitive patterns are redacted before
+  the message is emailed. The sender is the company SMTP account and the
+  verified customer account email is included as `Reply-To`, so support can
+  reply to the customer without allowing sender spoofing. Configure
+  `SUPPORT_EMAIL`, `SMTP_HOST`, and
+  `SMTP_PORT` in `.env`; configure `SMTP_USERNAME` and `SMTP_PASSWORD` when
+  authentication is required. `SMTP_USE_TLS` defaults to `true`;
+  `SMTP_USE_SSL=true` enables implicit TLS instead. `SMTP_FROM_EMAIL` can
+  override the sender address. Email delivery must be configured for the form
+  to send messages successfully.
 - **Conversational scope and issue handling:** General questions outside
   store/e-commerce support are politely declined rather than answered with
   generic advice. Delivery complaints without an order number can search only
@@ -55,7 +61,7 @@ This repository implements the customer-support agent described in
   check both order and payment records, then create a support ticket when human
   investigation is needed. The assistant does not claim that a refund was
   issued or that a human was contacted; tickets are local demo records and the
-  customer chooses a listed support channel to contact the team.
+  signed-in customer can send further details directly to support by email.
 
 Phase 2 tools are available through chat routing but are not separate HTTP
 endpoints apart from cancellation confirmation. Customers sign in with their
@@ -296,13 +302,20 @@ pressed.
 
 ## Environment variables
 
-Copy `.env.example` to `.env`, then set `MISTRAL_API_KEY` before policy
-ingestion. Set `GROQ_API_KEY` to enable semantic chunking; if it is unavailable
+Copy `.env.example` to `.env` as a configuration template, then set
+`MISTRAL_API_KEY` before policy ingestion. The application and policy-ingestion
+command load `.env` from the repository root; `.env.example` is never loaded.
+Set `GROQ_API_KEY` to enable semantic chunking; if it is unavailable
 or the configured `GROQ_MODEL` is not set, ingestion warns and uses
 deterministic chunks instead. The selected Groq model must be enabled for your
 account. Policy answers in chat require `GROQ_API_KEY`, `GROQ_MODEL`, and
-`MISTRAL_API_KEY`. Model requests have a 15-second timeout. Never commit `.env`
-or place credentials in source code.
+`MISTRAL_API_KEY`. By default, every generated policy answer is checked against
+the retrieved approved evidence using `GROQ_VERIFIER_MODEL` (defaults to
+`openai/gpt-oss-20b`). An unsupported answer or verifier failure is replaced by
+a safe escalation response rather than shown as fact. This adds a second model
+request per policy answer, but model-based verification cannot guarantee that
+all hallucinations are detected. Model requests have a 15-second timeout.
+Never commit `.env` or place credentials in source code.
 
 Chat requests are screened locally for attempts to retrieve credentials,
 hidden instructions, or private customer information. To enable OpenAI's

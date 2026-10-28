@@ -1,3 +1,4 @@
+from pathlib import Path
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -17,7 +18,10 @@ from app.api.orders import router as orders_router
 from app.evaluation.router import router as evaluation_router
 from app.evaluation.middleware import EvaluationRequestSizeMiddleware
 
-load_dotenv()
+load_dotenv(
+    dotenv_path=Path(__file__).resolve().parents[1] / ".env",
+    override=False,
+)
 
 app = FastAPI(title="Customer Support AI Agent", version="0.1.0")
 app.add_middleware(EvaluationRequestSizeMiddleware)

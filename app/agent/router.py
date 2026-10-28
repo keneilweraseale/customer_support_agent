@@ -29,7 +29,18 @@ POLICY_WORDS = (
 )
 CANCEL_WORDS = ("cancel", "cancellation")
 ARRIVAL_WORDS = ("arrive", "arrived", "late", "missing", "overdue", "hasn't come")
-ESCALATION_WORDS = ("escalate", "support keeps ignoring", "ignored me", "human agent")
+ESCALATION_WORDS = (
+    "escalate",
+    "support keeps ignoring",
+    "ignored me",
+    "human agent",
+    "human support",
+    "contact support",
+    "contact a human",
+    "speak to a human",
+    "talk to a human",
+    "real person",
+)
 ORDER_SEARCH_WORDS = (
     "find it",
     "find my order",

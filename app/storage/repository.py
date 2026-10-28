@@ -36,6 +36,8 @@ class SupportRepository(Protocol):
 
     def append_support_ticket(self, ticket: SupportTicket) -> None: ...
 
+    def get_support_ticket(self, ticket_id: str) -> SupportTicket | None: ...
+
     def expire_old_cancellation_events(
         self,
         now: datetime | None = None,

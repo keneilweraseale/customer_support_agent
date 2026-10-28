@@ -1,3 +1,4 @@
+import smtplib
 from uuid import UUID
 
 import pytest
@@ -9,6 +10,7 @@ from app.agent.router import (
     build_default_orchestrator,
 )
 from app.main import app
+from app.storage.models import CustomerAccount
 
 client = TestClient(app)
 
@@ -98,7 +100,7 @@ def test_chat_returns_grounded_policy_answer(monkeypatch) -> None:
     }
 
 
-def test_unresolved_chat_creates_ticket_and_returns_support_links(
+def test_unresolved_chat_creates_owned_ticket_without_external_contact_links(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -114,15 +116,14 @@ def test_unresolved_chat_creates_ticket_and_returns_support_links(
             )
 
     monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
-    monkeypatch.setenv("SUPPORT_WHATSAPP_NUMBER", "+15555550123")
-    monkeypatch.setenv("SUPPORT_EMAIL", "support@example.test")
-    monkeypatch.setenv("SUPPORT_PHONE", "")
+    token = issue_authorization_token("CUS-DEMO-001")
 
     response = client.post(
         "/api/chat",
         json={
             "message": "Can I get a refund for my order? Card 4111 1111 1111 1111",
             "conversation_id": "demo-refund-escalation",
+            "authorization_token": token,
         },
     )
 
@@ -132,29 +133,208 @@ def test_unresolved_chat_creates_ticket_and_returns_support_links(
     assert "support ticket SUP-" in data["answer"]
     ticket_action = data["actions"][0]
     assert ticket_action["type"] == "support_ticket"
-    assert [channel["type"] for channel in ticket_action["channels"]] == [
-        "whatsapp",
-        "email",
-    ]
-    assert ticket_action["channels"][0]["url"].startswith("https://wa.me/15555550123?")
-    assert ticket_action["channels"][1]["url"].startswith(
-        "mailto:support@example.test?"
-    )
+    assert set(ticket_action) == {"type", "ticket_id"}
     tickets = (tmp_path / "support_tickets.json").read_text(encoding="utf-8")
     assert "Can I get a refund for my order?" in tickets
     assert "[redacted]" in tickets
     assert "4111 1111 1111 1111" not in tickets
     assert ticket_action["ticket_id"] in tickets
+    assert "CUS-DEMO-001" in tickets
 
 
-def test_support_ticket_does_not_expose_unconfigured_contact_defaults(
+def test_escalation_requires_authentication(monkeypatch) -> None:
+    class FakeOrchestrator:
+        def handle(self, message, customer_id=None, context_order_id=None):
+            del message, customer_id, context_order_id
+            return OrchestratedChatResult(
+                answer="I couldn’t verify the refund answer.",
+                route=ChatRoute.POLICY,
+                sources=[],
+                actions=[],
+                needs_human_support=True,
+            )
+
+    monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
+
+    response = client.post("/api/chat", json={"message": "Please escalate this."})
+
+    assert response.status_code == 401
+
+
+def test_explicit_contact_support_request_creates_ticket_even_without_model_flag(
     monkeypatch,
 ) -> None:
-    monkeypatch.delenv("SUPPORT_WHATSAPP_NUMBER", raising=False)
-    monkeypatch.delenv("SUPPORT_EMAIL", raising=False)
-    monkeypatch.delenv("SUPPORT_PHONE", raising=False)
+    class FakeOrchestrator:
+        def handle(self, message, customer_id=None, context_order_id=None):
+            del message, customer_id, context_order_id
+            return OrchestratedChatResult(
+                answer="The refund policy says returns are accepted within 30 days.",
+                route=ChatRoute.POLICY,
+                sources=[],
+                actions=[],
+            )
 
-    assert chat_api._support_contact_channels("SUP-TEST-123") == []
+    monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
+    token = issue_authorization_token("CUS-DEMO-001")
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "Contact support about my refund.",
+            "authorization_token": token,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["needs_human_support"] is True
+    ticket_action = next(
+        action for action in data["actions"] if action["type"] == "support_ticket"
+    )
+    assert ticket_action["ticket_id"] in data["answer"]
+
+
+def test_sending_support_ticket_message_uses_email_and_sanitizes_sensitive_data(
+    monkeypatch,
+) -> None:
+    class FakeOrchestrator:
+        def handle(self, message, customer_id=None, context_order_id=None):
+            del message, customer_id, context_order_id
+            return OrchestratedChatResult(
+                answer="I couldn’t verify the refund answer.",
+                route=ChatRoute.POLICY,
+                sources=[],
+                actions=[],
+                needs_human_support=True,
+            )
+
+    monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
+    monkeypatch.setattr(
+        chat_api.support_repository,
+        "get_customer_accounts",
+        lambda: [
+            CustomerAccount(
+                email="customer@example.test",
+                customer_id="CUS-DEMO-001",
+                password_hash=f"scrypt$16384$8$1${'A' * 22}${'A' * 43}",
+            )
+        ],
+    )
+    sent_email = {}
+    monkeypatch.setattr(
+        chat_api,
+        "send_support_email",
+        lambda ticket_id, message, reply_to: sent_email.update(
+            ticket_id=ticket_id,
+            message=message,
+            reply_to=reply_to,
+        ),
+    )
+    token = issue_authorization_token("CUS-DEMO-001")
+    escalation = client.post(
+        "/api/chat",
+        json={"message": "Please escalate this.", "authorization_token": token},
+    )
+    ticket_id = escalation.json()["actions"][0]["ticket_id"]
+
+    response = client.post(
+        f"/api/support/tickets/{ticket_id}/message",
+        json={
+            "authorization_token": token,
+            "message": "My card is 4111 1111 1111 1111; please investigate.",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"sent": True, "ticket_id": ticket_id}
+    assert sent_email["ticket_id"] == ticket_id
+    assert sent_email["reply_to"] == "customer@example.test"
+    assert "[redacted]" in sent_email["message"]
+    assert "4111 1111 1111 1111" not in sent_email["message"]
+
+
+def test_smtp_authentication_failure_returns_actionable_message(monkeypatch) -> None:
+    class FakeOrchestrator:
+        def handle(self, message, customer_id=None, context_order_id=None):
+            del message, customer_id, context_order_id
+            return OrchestratedChatResult(
+                answer="I couldn’t verify the refund answer.",
+                route=ChatRoute.POLICY,
+                sources=[],
+                actions=[],
+                needs_human_support=True,
+            )
+
+    monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
+    monkeypatch.setattr(
+        chat_api.support_repository,
+        "get_customer_accounts",
+        lambda: [
+            CustomerAccount(
+                email="customer@example.test",
+                customer_id="CUS-DEMO-001",
+                password_hash=f"scrypt$16384$8$1${'A' * 22}${'A' * 43}",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        chat_api,
+        "send_support_email",
+        lambda *args: (_ for _ in ()).throw(
+            smtplib.SMTPAuthenticationError(535, b"Authentication failed")
+        ),
+    )
+    token = issue_authorization_token("CUS-DEMO-001")
+    escalation = client.post(
+        "/api/chat",
+        json={"message": "Please escalate this.", "authorization_token": token},
+    )
+    ticket_id = escalation.json()["actions"][0]["ticket_id"]
+
+    response = client.post(
+        f"/api/support/tickets/{ticket_id}/message",
+        json={
+            "authorization_token": token,
+            "message": "Please investigate this.",
+        },
+    )
+
+    assert response.status_code == 503
+    assert "provider rejected SMTP login" in response.json()["error"]["message"]
+
+
+def test_support_ticket_message_cannot_be_sent_by_another_customer(
+    monkeypatch,
+) -> None:
+    class FakeOrchestrator:
+        def handle(self, message, customer_id=None, context_order_id=None):
+            del message, customer_id, context_order_id
+            return OrchestratedChatResult(
+                answer="I couldn’t verify the refund answer.",
+                route=ChatRoute.POLICY,
+                sources=[],
+                actions=[],
+                needs_human_support=True,
+            )
+
+    monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
+    token = issue_authorization_token("CUS-DEMO-001")
+    escalation = client.post(
+        "/api/chat",
+        json={"message": "Please escalate this.", "authorization_token": token},
+    )
+    ticket_id = escalation.json()["actions"][0]["ticket_id"]
+    other_customer_token = issue_authorization_token("CUS-DEMO-002")
+
+    response = client.post(
+        f"/api/support/tickets/{ticket_id}/message",
+        json={
+            "authorization_token": other_customer_token,
+            "message": "This should not be sent.",
+        },
+    )
+
+    assert response.status_code == 404
 
 
 def test_chat_generates_conversation_id_when_omitted(monkeypatch) -> None:

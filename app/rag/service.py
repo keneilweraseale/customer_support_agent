@@ -4,8 +4,10 @@ from dataclasses import dataclass
 
 from app.rag.generation import (
     AnswerGenerator,
+    AnswerVerifier,
     GenerationError,
     GroqGroundedAnswerGenerator,
+    GroqGroundedAnswerVerifier,
     HUMAN_SUPPORT_MARKER,
 )
 from app.rag.providers import (
@@ -35,9 +37,11 @@ class PolicyAnswerService:
         self,
         retriever: HybridPolicyRetriever,
         generator: AnswerGenerator,
+        verifier: AnswerVerifier | None = None,
     ) -> None:
         self._retriever = retriever
         self._generator = generator
+        self._verifier = verifier
 
     def answer(
         self,
@@ -57,22 +61,33 @@ class PolicyAnswerService:
         needs_human_support = False
         try:
             answer = self._generator.generate(question, search_result.results)
-            needs_human_support = answer.startswith(HUMAN_SUPPORT_MARKER) or any(
-                phrase in answer.casefold()
-                for phrase in (
-                    "cannot verify",
-                    "can't verify",
-                    "can’t verify",
-                    "insufficient evidence",
-                    "evidence is insufficient",
-                    "not enough information",
-                    "unable to determine",
-                    "couldn’t find enough information",
-                    "couldn't find enough information",
+            if self._verifier is not None and not self._verifier.is_supported(
+                question,
+                answer,
+                search_result.results,
+            ):
+                answer = (
+                    "I couldn’t verify a reliable answer against the approved "
+                    "policy information, so I’m escalating this to our support team."
                 )
-            )
-            if needs_human_support:
-                answer = answer.removeprefix(HUMAN_SUPPORT_MARKER).lstrip()
+                needs_human_support = True
+            else:
+                needs_human_support = answer.startswith(HUMAN_SUPPORT_MARKER) or any(
+                    phrase in answer.casefold()
+                    for phrase in (
+                        "cannot verify",
+                        "can't verify",
+                        "can’t verify",
+                        "insufficient evidence",
+                        "evidence is insufficient",
+                        "not enough information",
+                        "unable to determine",
+                        "couldn’t find enough information",
+                        "couldn't find enough information",
+                    )
+                )
+                if needs_human_support:
+                    answer = answer.removeprefix(HUMAN_SUPPORT_MARKER).lstrip()
         except GenerationError:
             logger.exception("Grounded policy answer generation failed.")
             answer = (
@@ -146,4 +161,12 @@ def answer_policy_question(question: str) -> PolicyAnswer:
         )
 
     generator = GroqGroundedAnswerGenerator(groq_key, groq_model)
-    return PolicyAnswerService(retriever, generator).answer(question, search_result)
+    verifier_model = os.environ.get(
+        "GROQ_VERIFIER_MODEL",
+        "openai/gpt-oss-20b",
+    ).strip()
+    verifier = GroqGroundedAnswerVerifier(groq_key, verifier_model)
+    return PolicyAnswerService(retriever, generator, verifier).answer(
+        question,
+        search_result,
+    )

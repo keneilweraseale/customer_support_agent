@@ -9,6 +9,7 @@ from app.rag.generation import (
     HUMAN_SUPPORT_MARKER,
     GenerationError,
     GroqGroundedAnswerGenerator,
+    GroqGroundedAnswerVerifier,
 )
 from app.rag.retrieval import RetrievedChunk
 from app.storage.models import PolicyChunk
@@ -87,3 +88,39 @@ def test_grounded_generation_converts_provider_timeout_to_generation_error() -> 
 
     with pytest.raises(GenerationError, match="request failed"):
         generator.generate("question", [make_evidence("Approved policy text.")])
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ('{"supported": true}', True),
+        ('{"supported": false}', False),
+    ],
+)
+def test_grounded_verifier_returns_structured_support_result(
+    content: str,
+    expected: bool,
+) -> None:
+    create = Mock(
+        return_value=SimpleNamespace(
+            choices=[
+                SimpleNamespace(message=SimpleNamespace(content=content)),
+            ]
+        )
+    )
+    verifier = GroqGroundedAnswerVerifier.__new__(GroqGroundedAnswerVerifier)
+    verifier._client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    verifier._model = "test-verifier"
+
+    result = verifier.is_supported(
+        "What is the policy?",
+        "Returns are accepted within 30 days.",
+        [make_evidence("Returns are accepted within 30 days.")],
+    )
+
+    assert result is expected
+    assert create.call_args.kwargs["model"] == "test-verifier"
+    assert create.call_args.kwargs["temperature"] == 0
+    assert create.call_args.kwargs["response_format"] == {"type": "json_object"}

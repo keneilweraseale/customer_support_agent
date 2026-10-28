@@ -311,6 +311,54 @@ def test_service_handles_generation_failure_without_inventing_answer() -> None:
     assert result.sources[0]["chunk_id"] == "refund-1"
 
 
+def test_service_replaces_unverified_answer_with_safe_escalation() -> None:
+    document = make_document()
+    chunk = make_chunk("refund-1", document, "refund within thirty days", [])
+
+    class RejectingVerifier:
+        def is_supported(self, question, answer, evidence):
+            del question, answer, evidence
+            return False
+
+    service = PolicyAnswerService(
+        HybridPolicyRetriever(
+            MemoryRepository([document], [chunk]),
+            FakeEmbedder([1.0, 0.0]),
+        ),
+        FakeGenerator("Refunds are always available."),
+        RejectingVerifier(),
+    )
+
+    result = service.answer("What is the refund policy?")
+
+    assert "couldn’t verify a reliable answer" in result.answer
+    assert result.needs_human_support is True
+
+
+def test_service_escalates_when_answer_verification_fails() -> None:
+    document = make_document()
+    chunk = make_chunk("refund-1", document, "refund within thirty days", [])
+
+    class FailingVerifier:
+        def is_supported(self, question, answer, evidence):
+            del question, answer, evidence
+            raise GenerationError("verification service unavailable")
+
+    service = PolicyAnswerService(
+        HybridPolicyRetriever(
+            MemoryRepository([document], [chunk]),
+            FakeEmbedder([1.0, 0.0]),
+        ),
+        FakeGenerator("Returns are accepted within thirty days."),
+        FailingVerifier(),
+    )
+
+    result = service.answer("What is the refund policy?")
+
+    assert "can’t generate a reliable answer right now" in result.answer
+    assert result.needs_human_support is True
+
+
 def test_top_level_policy_query_returns_unknown_without_model_keys(
     monkeypatch,
 ) -> None:

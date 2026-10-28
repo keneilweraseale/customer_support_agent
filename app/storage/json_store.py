@@ -172,6 +172,18 @@ class JsonRepository(SupportRepository):
             tickets.append(ticket)
             self._write_records("support_tickets.json", tickets)
 
+    def get_support_ticket(self, ticket_id: str) -> SupportTicket | None:
+        with self._write_lock:
+            tickets = self._read_optional_records(
+                "support_tickets.json",
+                SupportTicket,
+                "ticket_id",
+            )
+            return next(
+                (ticket for ticket in tickets if ticket.ticket_id == ticket_id),
+                None,
+            )
+
     def update_cancellation_event(self, event: CancellationEvent) -> None:
         with self._write_lock:
             events = self._active_cancellation_events()
