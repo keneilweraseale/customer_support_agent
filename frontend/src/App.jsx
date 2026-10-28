@@ -3,8 +3,8 @@ import { useState } from "react";
 import {
   confirmCancellation as sendCancellationConfirmation,
   recordCancellationDecision as sendCancellationDecision,
+  login as sendLogin,
   sendChatMessage,
-  verifyDemoCustomer,
 } from "./api.js";
 import ChatComposer from "./components/ChatComposer.jsx";
 import ChatHeader from "./components/ChatHeader.jsx";
@@ -42,33 +42,32 @@ export default function App() {
   const [conversationId, setConversationId] = useState(createConversationId);
   const [messages, setMessages] = useState([welcomeMessage]);
   const [draft, setDraft] = useState("");
-  const [customerId, setCustomerId] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [authorizationToken, setAuthorizationToken] = useState("");
-  const [verificationMessage, setVerificationMessage] = useState("");
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [loginMessage, setLoginMessage] = useState("");
+  const [isSigningIn, setIsSigningIn] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  async function verifyCustomer() {
-    if (!customerId.trim() || isVerifying || isLoading) return;
-    setIsVerifying(true);
-    setAuthorizationToken("");
-    setVerificationMessage("");
+  async function signIn(event) {
+    event.preventDefault();
+    if (!email.trim() || !password || isSigningIn || isLoading) return;
+    setIsSigningIn(true);
+    setLoginMessage("");
     try {
-      const result = await verifyDemoCustomer(customerId.trim());
+      const result = await sendLogin(email.trim(), password);
       setAuthorizationToken(result.authorization_token);
-      setVerificationMessage(
-        "Demo token issued for this browser session; this is not real identity verification.",
-      );
+      setPassword("");
     } catch (error) {
-      setVerificationMessage(error.message);
+      setLoginMessage(error.message);
     } finally {
-      setIsVerifying(false);
+      setIsSigningIn(false);
     }
   }
 
   async function submitMessage(text = draft) {
     const messageText = text.trim();
-    if (!messageText || isLoading) return;
+    if (!messageText || !authorizationToken || isLoading) return;
 
     setDraft("");
     setIsLoading(true);
@@ -117,7 +116,7 @@ export default function App() {
     } catch (error) {
       if (error.status === 401) {
         setAuthorizationToken("");
-        setVerificationMessage(error.message);
+        setLoginMessage(error.message);
       }
       setMessages((current) =>
         current.map((message) =>
@@ -141,9 +140,16 @@ export default function App() {
     setConversationId(createConversationId());
     setMessages([welcomeMessage]);
     setDraft("");
-    setCustomerId("");
+    setLoginMessage("");
+  }
+
+  function signOut() {
     setAuthorizationToken("");
-    setVerificationMessage("");
+    setPassword("");
+    setMessages([welcomeMessage]);
+    setDraft("");
+    setLoginMessage("");
+    setConversationId(createConversationId());
   }
 
   async function confirmCancellation(
@@ -180,7 +186,7 @@ export default function App() {
     } catch (error) {
       if (error.status === 401) {
         setAuthorizationToken("");
-        setVerificationMessage(error.message);
+        setLoginMessage(error.message);
       }
       setMessages((current) =>
         current.map((message) =>
@@ -242,7 +248,7 @@ export default function App() {
     } catch (error) {
       if (error.status === 401) {
         setAuthorizationToken("");
-        setVerificationMessage(error.message);
+        setLoginMessage(error.message);
       }
       setMessages((current) =>
         current.map((message) =>
@@ -266,65 +272,70 @@ export default function App() {
       <style>{responsiveStyles}</style>
       <main style={styles.page}>
         <section aria-label="Customer support chat" style={styles.panel}>
-          <ChatHeader disabled={isLoading} onNewChat={startNewChat} />
-          <MessageList
-            isLoading={isLoading}
-            messages={messages.filter((message) => !message.pending)}
-            onCancellationDecision={recordCancellationDecision}
-            onConfirmCancellation={confirmCancellation}
-            onQuickAction={(action) => submitMessage(action)}
-            onRetry={(text) => submitMessage(text)}
+          <ChatHeader
+            authenticated={Boolean(authorizationToken)}
+            disabled={isLoading}
+            onLogout={signOut}
+            onNewChat={startNewChat}
           />
-          <footer style={styles.footer}>
-            <label htmlFor="demo-customer-id" style={styles.customerLabel}>
-              Demo customer ID (for order lookups; not identity verification)
-            </label>
-            <input
-              autoComplete="off"
-              id="demo-customer-id"
-              onChange={(event) => {
-                setCustomerId(event.target.value);
-                setAuthorizationToken("");
-                setVerificationMessage("");
-              }}
-              placeholder="Optional, e.g. CUS-DEMO-001"
-              style={styles.customerInput}
-              value={customerId}
-            />
-            <div style={styles.verificationRow}>
+          {!authorizationToken ? (
+            <form onSubmit={signIn} style={styles.loginForm}>
+              <h2 style={styles.loginTitle}>Sign in to customer support</h2>
+              <p style={styles.loginDescription}>
+                Sign in to ask about your orders, deliveries, payments, or cancellations.
+              </p>
+              <label htmlFor="customer-email" style={styles.loginLabel}>Email</label>
+              <input
+                autoComplete="username"
+                id="customer-email"
+                onChange={(event) => setEmail(event.target.value)}
+                required
+                style={styles.loginInput}
+                type="email"
+                value={email}
+              />
+              <label htmlFor="customer-password" style={styles.loginLabel}>Password</label>
+              <input
+                autoComplete="current-password"
+                id="customer-password"
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                style={styles.loginInput}
+                type="password"
+                value={password}
+              />
               <button
-                disabled={!customerId.trim() || isVerifying || isLoading}
-                onClick={verifyCustomer}
-                style={styles.verifyButton}
-                type="button"
+                disabled={!email.trim() || !password || isSigningIn}
+                style={styles.loginButton}
+                type="submit"
               >
-                {isVerifying ? "Verifying…" : authorizationToken ? "Verified" : "Verify demo ID"}
+                {isSigningIn ? "Signing in…" : "Sign in"}
               </button>
-                      {verificationMessage && (
-                        <span
-                          role="status"
-                          style={{
-                            ...styles.verificationStatus,
-                            color: authorizationToken ? "#0F766E" : "#B91C1C",
-                          }}
-                        >
-                          {verificationMessage}
-                        </span>
-              )}
-            </div>
-            <p style={styles.demoWarning}>
-              Demo only: these fictional IDs are not proof of real identity. Never use real customer records.
-            </p>
-            <ChatComposer
-              disabled={isLoading}
-              onChange={setDraft}
-              onSubmit={() => submitMessage()}
-              value={draft}
-            />
-            <p style={styles.privacy}>
-              For your safety, don’t share passwords or full payment-card details.
-            </p>
-          </footer>
+              {loginMessage && <p role="status" style={styles.loginError}>{loginMessage}</p>}
+            </form>
+          ) : (
+            <>
+              <MessageList
+                isLoading={isLoading}
+                messages={messages.filter((message) => !message.pending)}
+                onCancellationDecision={recordCancellationDecision}
+                onConfirmCancellation={confirmCancellation}
+                onQuickAction={(action) => submitMessage(action)}
+                onRetry={(text) => submitMessage(text)}
+              />
+              <footer style={styles.footer}>
+                <ChatComposer
+                  disabled={isLoading}
+                  onChange={setDraft}
+                  onSubmit={() => submitMessage()}
+                  value={draft}
+                />
+                <p style={styles.privacy}>
+                  For your safety, don’t share passwords or full payment-card details.
+                </p>
+              </footer>
+            </>
+          )}
         </section>
       </main>
     </>
@@ -355,34 +366,42 @@ const styles = {
     width: "100%",
   },
   footer: { borderTop: "1px solid #E2E8F0", padding: "16px 22px 13px" },
-  customerLabel: { color: "#475569", display: "block", fontSize: 12, marginBottom: 5 },
-  customerInput: {
+  loginForm: {
+    alignSelf: "center",
+    display: "flex",
+    flexDirection: "column",
+    maxWidth: 420,
+    padding: 28,
+    width: "100%",
+  },
+  loginTitle: { color: "#1F2937", fontSize: 22, margin: "0 0 8px" },
+  loginDescription: { color: "#64748B", fontSize: 14, lineHeight: 1.5, margin: "0 0 20px" },
+  loginLabel: { color: "#475569", fontSize: 13, margin: "0 0 6px" },
+  loginInput: {
     background: "#FFFFFF",
     border: "1px solid #CBD5E1",
     borderRadius: 8,
     color: "#1F2937",
     font: "inherit",
-    fontSize: 13,
-    marginBottom: 10,
-    maxWidth: 300,
+    fontSize: 14,
+    marginBottom: 14,
     outlineColor: "#1D4ED8",
-    padding: "8px 10px",
+    padding: "10px 12px",
     width: "100%",
   },
-  verificationRow: { alignItems: "center", display: "flex", flexWrap: "wrap", gap: 10 },
-  verifyButton: {
+  loginButton: {
     background: "#1D4ED8",
     border: 0,
     borderRadius: 8,
     color: "#FFFFFF",
     cursor: "pointer",
     font: "inherit",
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 600,
-    padding: "8px 12px",
+    marginTop: 4,
+    padding: "10px 12px",
   },
-  verificationStatus: { color: "#0F766E", fontSize: 12 },
-  demoWarning: { color: "#92400E", fontSize: 11, margin: "7px 0 10px" },
+  loginError: { color: "#B91C1C", fontSize: 13, margin: "14px 0 0" },
   privacy: { color: "#64748B", fontSize: 12, margin: "10px 2px 0" },
 };
 

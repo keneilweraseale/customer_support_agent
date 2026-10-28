@@ -26,7 +26,7 @@ This repository implements the customer-support agent described in
 - **Phase 6:** Deterministic chat routing selects approved-policy RAG, order,
   delivery, payment, product, review, and cancellation-eligibility tools.
   Mixed warranty/product questions combine policy sources with current product
-  data. Order-related requests require a demo authorization token and order
+  data. Order-related requests require a signed-in customer session and order
   reference; cancellation checks eligibility before asking for confirmation.
 - **Phase 7:** Authenticated conversations retain at most 12 recent turns and
   the last order reference, scoped to the verified customer. Memory expires
@@ -58,10 +58,13 @@ This repository implements the customer-support agent described in
   customer chooses a listed support channel to contact the team.
 
 Phase 2 tools are available through chat routing but are not separate HTTP
-endpoints apart from cancellation confirmation. The demo verification endpoint
-issues a token to anyone who supplies a known seeded customer ID. This is
-intentionally a simulation for fictional local records, not authentication; do
-not connect it to real customer data.
+endpoints apart from cancellation confirmation. Customers sign in with their
+email and password before using the chat UI. Accounts are provisioned by an
+administrator and map one email address to one customer ID; passwords are
+stored as salted scrypt hashes in the git-ignored
+`data/customer_accounts.json` file. Sessions expire after 15 minutes and are
+held in process memory, so configure durable shared sessions and an appropriate
+password/account lifecycle before production use.
 
 The records in `data/` are fictional test data. They are not real customer,
 payment, product, delivery, or review records.
@@ -256,14 +259,27 @@ bound to the customer, order, and order version.
 ## Postman
 
 Import `postman/customer_support_agent.postman_collection.json` into Postman.
-Set `baseUrl` to `http://127.0.0.1:8000`. The health, demo verification, chat,
+Set `baseUrl` to `http://127.0.0.1:8000`. The health, login, chat,
 and cancellation confirmation requests are implemented; remaining requests
 document endpoints planned for later phases.
-To test order, delivery, payment, or cancellation chat routes, first call
-`POST /api/demo/verify` with `{"customer_id":"CUS-DEMO-001"}` and copy its
-`authorization_token` into the chat request. Tokens expire after 15 minutes and
-are held in process memory. Anyone who knows a seeded demo ID can obtain a
-token; this is not authentication and must not be used with real records.
+There are no default login accounts or shared credentials. A fresh checkout
+has no allowed email/password pairs; logins work only after an administrator
+provisions an account for a seeded customer. Create one from the repository
+root, replacing the example email if needed:
+
+```powershell
+python -m app.services.customer_accounts --customer-id CUS-DEMO-001 --email customer@example.com
+```
+
+This creates the `customer@example.com` login for customer `CUS-DEMO-001`.
+Enter a password of at least 12 characters when prompted, then enter it again
+to confirm. The password is not included in the command line and is not stored
+in plaintext. Create one account per customer. Then call
+`POST /api/auth/login` with the account email and password; copy the returned
+`authorization_token` into chat and cancellation requests. Do not send customer
+IDs from the browser. Order and cancellation handlers resolve the customer ID
+only from that session and check that each requested order belongs to that
+customer. Sessions expire after 15 minutes and are process-local.
 
 For cancellation, send a chat message such as `Cancel order ORD-1001` with the
 authorization token. If eligible, the response includes a separate

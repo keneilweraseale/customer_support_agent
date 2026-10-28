@@ -1,4 +1,4 @@
-export default function ChatHeader({ disabled, onNewChat }) {
+export default function ChatHeader({ authenticated, disabled, onLogout, onNewChat }) {
   return (
     <header style={styles.header}>
       <div style={styles.brand}>
@@ -8,9 +8,16 @@ export default function ChatHeader({ disabled, onNewChat }) {
           <p style={styles.subtitle}>Here to help with your order and more</p>
         </div>
       </div>
-      <button disabled={disabled} onClick={onNewChat} style={styles.newChat} type="button">
-        <span aria-hidden="true">＋</span> New chat
-      </button>
+      {authenticated && (
+        <div style={styles.actions}>
+          <button disabled={disabled} onClick={onNewChat} style={styles.newChat} type="button">
+            <span aria-hidden="true">＋</span> New chat
+          </button>
+          <button disabled={disabled} onClick={onLogout} style={styles.newChat} type="button">
+            Sign out
+          </button>
+        </div>
+      )}
     </header>
   );
 }
@@ -23,6 +30,7 @@ const styles = {
     justifyContent: "space-between",
     padding: "20px 24px",
   },
+  actions: { alignItems: "center", display: "flex", gap: 8 },
   brand: { alignItems: "center", display: "flex", gap: 12 },
   icon: {
     alignItems: "center",

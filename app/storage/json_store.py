@@ -11,6 +11,7 @@ from pydantic import BaseModel, ValidationError
 from app.storage.models import (
     CancellationEvent,
     ConversationMemory,
+    CustomerAccount,
     Delivery,
     Order,
     Payment,
@@ -282,6 +283,43 @@ class JsonRepository(SupportRepository):
                 ),
                 None,
             )
+
+    def get_customer_accounts(self) -> list[CustomerAccount]:
+        with self._write_lock:
+            accounts = self._read_optional_records(
+                "customer_accounts.json",
+                CustomerAccount,
+                "email",
+            )
+            normalized_emails = [account.email.casefold() for account in accounts]
+            customer_ids = [account.customer_id for account in accounts]
+            if len(normalized_emails) != len(set(normalized_emails)):
+                raise DataStoreError("Customer account emails must be unique.")
+            if len(customer_ids) != len(set(customer_ids)):
+                raise DataStoreError("Customer accounts must have unique customer IDs.")
+            return accounts
+
+    def create_customer_account(self, account: CustomerAccount) -> None:
+        with self._write_lock:
+            accounts = self._read_optional_records(
+                "customer_accounts.json",
+                CustomerAccount,
+                "email",
+            )
+            if any(
+                existing.email.casefold() == account.email.casefold()
+                for existing in accounts
+            ):
+                raise DataStoreError("An account already exists for that email address.")
+            if any(existing.customer_id == account.customer_id for existing in accounts):
+                raise DataStoreError("An account already exists for that customer.")
+            if not any(
+                order.customer_id == account.customer_id
+                for order in self._read_records("orders.json", Order, "order_id")
+            ):
+                raise DataStoreError("The account must be linked to a known customer.")
+            accounts.append(account)
+            self._write_records("customer_accounts.json", accounts)
 
     def get_orders(self) -> list[Order]:
         with self._write_lock:

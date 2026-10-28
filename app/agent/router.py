@@ -175,8 +175,8 @@ class ChatOrchestrator:
             if customer_id is None:
                 return OrchestratedChatResult(
                     answer=(
-                        "Please verify a seeded demo customer before I look up "
-                        "private order and payment information."
+                        "Please sign in before I look up private order and payment "
+                        "information."
                     ),
                     route=decision.route,
                     sources=[],
@@ -215,8 +215,8 @@ class ChatOrchestrator:
             if decision.order_id is None:
                 return OrchestratedChatResult(
                     answer=(
-                        "Please provide your demo customer ID and order reference "
-                        "(for example, verify CUS-DEMO-001, then use ORD-1001)."
+                        "Please sign in and provide your order reference "
+                        "(for example, ORD-1001)."
                         if customer_id is None
                         else "Please provide your order reference (for example, ORD-1001)."
                     ),
@@ -227,9 +227,7 @@ class ChatOrchestrator:
             if customer_id is None:
                 return OrchestratedChatResult(
                     answer=(
-                        "Please verify a seeded demo customer before I look up private "
-                        "order information. This demo flow is not production identity "
-                        "verification."
+                        "Please sign in before I look up private order information."
                     ),
                     route=decision.route,
                     sources=[],
@@ -834,7 +832,7 @@ class ChatOrchestrator:
             return "Which order would you like to check for cancellation? Please provide its order reference."
         if has_any(message, DELIVERY_WORDS + PAYMENT_WORDS + ORDER_WORDS):
             if customer_id is None:
-                return "Please provide your verified demo customer ID and order reference so I can look up private order information."
+                return "Please sign in and provide your order reference so I can look up private order information."
             return "Please provide your order reference (for example, ORD-1001)."
         if has_any(message, PRODUCT_WORDS) and decision.product_id is None:
             return "Please provide the product reference (for example, PROD-001)."

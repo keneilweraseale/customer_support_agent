@@ -110,7 +110,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         if request.authorization_token is None:
             raise HTTPException(
                 status_code=401,
-                detail="Demo verification is required for order-related requests.",
+                detail="Sign in before asking about your orders.",
             )
         customer_id = demo_authorization_service.resolve_customer(
             request.authorization_token
@@ -118,7 +118,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         if customer_id is None:
             raise HTTPException(
                 status_code=401,
-                detail="Demo verification is missing or expired.",
+                detail="Your session is missing or expired. Please sign in again.",
             )
 
     memory = None

@@ -68,6 +68,82 @@ def test_unknown_customer_cannot_receive_demo_token(repository: JsonRepository) 
         service.issue_token("CUS-DEMO-999")
 
 
+def test_login_uses_case_insensitive_email_and_stored_password_hash(
+    repository: JsonRepository,
+) -> None:
+    service = DemoAuthorizationService(repository)
+    password = "local-demo-password-123"
+    service.create_account("Customer@Example.com", password, "CUS-DEMO-001")
+
+    token, _ = service.authenticate("CUSTOMER@example.com", password)
+
+    assert service.resolve_customer(token) == "CUS-DEMO-001"
+    stored_account = repository.get_customer_accounts()[0]
+    assert stored_account.email == "customer@example.com"
+    assert password not in stored_account.password_hash
+    assert stored_account.password_hash.startswith("scrypt$")
+    assert password not in (
+        repository.data_directory / "customer_accounts.json"
+    ).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("email", "password"),
+    [
+        ("customer@example.com", "wrong-password-123"),
+        ("unknown@example.com", "wrong-password-123"),
+    ],
+)
+def test_login_rejects_wrong_password_and_unknown_email(
+    repository: JsonRepository,
+    email: str,
+    password: str,
+) -> None:
+    service = DemoAuthorizationService(repository)
+    service.create_account(
+        "customer@example.com",
+        "local-demo-password-123",
+        "CUS-DEMO-001",
+    )
+
+    with pytest.raises(DemoAuthorizationError, match="Invalid email or password"):
+        service.authenticate(email, password)
+
+
+def test_account_provisioning_rejects_unknown_or_duplicate_customer(
+    repository: JsonRepository,
+) -> None:
+    service = DemoAuthorizationService(repository)
+
+    with pytest.raises(DataStoreError, match="known customer"):
+        service.create_account(
+            "unknown@example.com",
+            "local-demo-password-123",
+            "CUS-DEMO-999",
+        )
+
+    service.create_account(
+        "customer@example.com",
+        "local-demo-password-123",
+        "CUS-DEMO-001",
+    )
+    with pytest.raises(DataStoreError, match="already exists"):
+        service.create_account(
+            "other@example.com",
+            "another-demo-password-123",
+            "CUS-DEMO-001",
+        )
+
+
+def test_account_provisioning_requires_a_strong_password(
+    repository: JsonRepository,
+) -> None:
+    service = DemoAuthorizationService(repository)
+
+    with pytest.raises(ValueError, match="at least 12"):
+        service.create_account("customer@example.com", "short", "CUS-DEMO-001")
+
+
 def test_missing_order_file_fails_verification_explicitly(tmp_path: Path) -> None:
     service = DemoAuthorizationService(JsonRepository(tmp_path))
 

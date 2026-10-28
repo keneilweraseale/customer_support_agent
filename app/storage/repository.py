@@ -4,6 +4,7 @@ from typing import Protocol
 from app.storage.models import (
     CancellationEvent,
     ConversationMemory,
+    CustomerAccount,
     Delivery,
     Order,
     Payment,
@@ -41,6 +42,10 @@ class SupportRepository(Protocol):
     ) -> int: ...
 
     def get_orders(self) -> list[Order]: ...
+
+    def get_customer_accounts(self) -> list[CustomerAccount]: ...
+
+    def create_customer_account(self, account: CustomerAccount) -> None: ...
 
     def get_order(self, order_id: str) -> Order | None: ...
 

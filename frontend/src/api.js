@@ -12,10 +12,18 @@ export async function sendChatMessage({ message, conversationId, authorizationTo
   return data;
 }
 
-export async function verifyDemoCustomer(customerId) {
-  const data = await postJson("/api/demo/verify", { customer_id: customerId });
+export async function login(email, password) {
+  let data;
+  try {
+    data = await postJson("/api/auth/login", { email, password });
+  } catch (error) {
+    if (error.status === 401) {
+      throw new Error("Email or password is incorrect.");
+    }
+    throw error;
+  }
   if (typeof data.authorization_token !== "string" || typeof data.expires_at !== "string") {
-    throw new Error("We received an unexpected verification response. Please try again.");
+    throw new Error("We received an unexpected login response. Please try again.");
   }
   return data;
 }
@@ -102,9 +110,7 @@ async function postJson(url, body, additionalHeaders = {}) {
 
 async function responseError(response) {
   if (response.status === 401) {
-    const error = new Error(
-      "Demo verification is missing or expired. Verify your demo customer ID and try again.",
-    );
+    const error = new Error("Your session has expired. Please sign in again.");
     error.status = 401;
     return error;
   }
