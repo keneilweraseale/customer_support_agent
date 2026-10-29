@@ -25,6 +25,153 @@ def issue_authorization_token(customer_id: str) -> str:
     return token
 
 
+def test_customer_ticket_list_and_detail_are_scoped_to_authenticated_owner() -> None:
+    repository = chat_api.support_repository
+    now = datetime.now(timezone.utc)
+    repository.append_support_ticket(
+        SupportTicket(
+            ticket_id="TKT-1001",
+            conversation_id="ticket-list-customer-one",
+            customer_message="My package arrived damaged.",
+            customer_id="CUS-DEMO-001",
+            issue_summary="Damaged delivery",
+            created_at=now,
+        )
+    )
+    repository.append_support_ticket(
+        SupportTicket(
+            ticket_id="TKT-1002",
+            conversation_id="ticket-list-customer-two",
+            customer_message="Where is my order?",
+            customer_id="CUS-DEMO-002",
+            issue_summary="Late delivery",
+            created_at=now,
+        )
+    )
+    customer_one_token = issue_authorization_token("CUS-DEMO-001")
+    customer_two_token = issue_authorization_token("CUS-DEMO-002")
+
+    customer_one_list = client.get(
+        "/api/tickets",
+        headers={"Authorization": f"Bearer {customer_one_token}"},
+    )
+    customer_two_list = client.get(
+        "/api/tickets",
+        headers={"Authorization": f"Bearer {customer_two_token}"},
+    )
+    own_detail = client.get(
+        "/api/tickets/TKT-1001",
+        headers={"Authorization": f"Bearer {customer_one_token}"},
+    )
+    foreign_detail = client.get(
+        "/api/tickets/TKT-1001",
+        headers={"Authorization": f"Bearer {customer_two_token}"},
+    )
+    missing_detail = client.get(
+        "/api/tickets/TKT-9999",
+        headers={"Authorization": f"Bearer {customer_one_token}"},
+    )
+
+    assert customer_one_list.status_code == customer_two_list.status_code == 200
+    assert [ticket["ticket_id"] for ticket in customer_one_list.json()["tickets"]] == ["TKT-1001"]
+    assert [ticket["ticket_id"] for ticket in customer_two_list.json()["tickets"]] == ["TKT-1002"]
+    assert own_detail.status_code == 200
+    assert own_detail.json()["subject"] == "Damaged delivery"
+    assert "customer_id" not in own_detail.json()
+    assert "conversation_id" not in own_detail.json()
+    assert foreign_detail.status_code == missing_detail.status_code == 404
+    assert foreign_detail.json()["error"]["code"] == missing_detail.json()["error"]["code"]
+    assert foreign_detail.json()["error"]["message"] == missing_detail.json()["error"]["message"]
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["open", "investigating", "waiting_for_customer", "resolved", "closed"],
+)
+def test_customer_ticket_api_accepts_supported_statuses(status: str) -> None:
+    chat_api.support_repository.append_support_ticket(
+        SupportTicket(
+            ticket_id=f"TKT-{status.upper()}",
+            conversation_id=f"ticket-status-{status}",
+            customer_message="Please check this request.",
+            customer_id="CUS-DEMO-001",
+            status=status,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    token = issue_authorization_token("CUS-DEMO-001")
+
+    response = client.get(
+        "/api/tickets",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert f"TKT-{status.upper()}" in {
+        ticket["ticket_id"] for ticket in response.json()["tickets"]
+    }
+
+
+def test_customer_ticket_list_requires_customer_authentication() -> None:
+    response = client.get("/api/tickets")
+
+    assert response.status_code == 401
+
+
+def test_customer_ticket_list_returns_safe_service_error(monkeypatch) -> None:
+    from app.storage.json_store import DataStoreError
+
+    def fail_ticket_read():
+        raise DataStoreError("private storage location")
+
+    monkeypatch.setattr(
+        chat_api.support_repository,
+        "get_support_tickets",
+        fail_ticket_read,
+    )
+    token = issue_authorization_token("CUS-DEMO-001")
+
+    response = client.get(
+        "/api/tickets",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "service_unavailable"
+    assert "private storage location" not in response.text
+
+
+def test_ticket_chat_lookup_uses_only_owned_ticket_records() -> None:
+    chat_api.support_repository.append_support_ticket(
+        SupportTicket(
+            ticket_id="TKT-CHAT-1001",
+            conversation_id="ticket-chat-owner-one",
+            customer_message="My order arrived damaged.",
+            customer_id="CUS-DEMO-001",
+            issue_summary="Damaged order",
+            status="waiting_for_customer",
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    own_token = issue_authorization_token("CUS-DEMO-001")
+    other_token = issue_authorization_token("CUS-DEMO-002")
+
+    own_response = client.post(
+        "/api/chat",
+        json={"message": "What is the status of ticket TKT-CHAT-1001?", "authorization_token": own_token},
+    )
+    foreign_response = client.post(
+        "/api/chat",
+        json={"message": "What is the status of ticket TKT-CHAT-1001?", "authorization_token": other_token},
+    )
+
+    assert own_response.status_code == 200
+    assert own_response.json()["route"] == "ticket_lookup"
+    assert "Pending Customer" in own_response.json()["answer"]
+    assert foreign_response.status_code == 200
+    assert "TKT-CHAT-1001" not in foreign_response.json()["answer"]
+
+
 @pytest.fixture(autouse=True)
 def isolate_chat_memory(monkeypatch, tmp_path) -> None:
     from app.services.conversation_memory import ConversationMemoryService

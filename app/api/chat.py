@@ -1,4 +1,5 @@
 import logging
+import re
 import smtplib
 from datetime import datetime, timezone
 from time import perf_counter
@@ -66,6 +67,15 @@ MessageText = Annotated[str, StringConstraints(strip_whitespace=True, min_length
 ConversationId = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=100),
+]
+TicketId = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=5,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$",
+    ),
 ]
 
 
@@ -146,6 +156,31 @@ class CustomerSupportTicketStatusResponse(BaseModel):
     customer_message: str | None
 
 
+class CustomerTicketSummary(BaseModel):
+    ticket_id: str
+    subject: str
+    status: SupportTicketStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class CustomerTicketStatusEvent(BaseModel):
+    previous_status: SupportTicketStatus
+    status: SupportTicketStatus
+    changed_at: datetime
+
+
+class CustomerTicketDetail(CustomerTicketSummary):
+    description: str
+    messages: list[ConversationTurn]
+    status_history: list[CustomerTicketStatusEvent]
+    customer_update: SupportTicketCustomerUpdate | None
+
+
+class CustomerTicketListResponse(BaseModel):
+    tickets: list[CustomerTicketSummary]
+
+
 class MemoryDiagnostics(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -190,6 +225,75 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
     if request.authorization_token is not None:
         customer_id = demo_authorization_service.resolve_customer(
             request.authorization_token
+        )
+    message_lower = request.message.casefold()
+    ticket_lookup = (
+        has_any(message_lower, ("ticket", "complaint"))
+        and has_any(
+            message_lower,
+            ("status", "update", "open", "resolved", "closed", "show", "list"),
+        )
+    )
+    if ticket_lookup:
+        if customer_id is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Sign in to check your support tickets.",
+            )
+        try:
+            owned_tickets = [
+                ticket
+                for ticket in await run_in_threadpool(
+                    support_repository.get_support_tickets
+                )
+                if ticket.customer_id == customer_id
+            ]
+        except DataStoreError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Support tickets are temporarily unavailable.",
+            ) from exc
+
+        requested_ticket_id = re.search(
+            r"\b(?:SUP|TKT)-[A-Z0-9-]{1,60}\b",
+            request.message.upper(),
+        )
+        if requested_ticket_id:
+            owned_tickets = [
+                ticket
+                for ticket in owned_tickets
+                if ticket.ticket_id == requested_ticket_id.group(0)
+            ]
+        elif "open" in message_lower:
+            owned_tickets = [ticket for ticket in owned_tickets if ticket.status == "open"]
+
+        if not owned_tickets:
+            answer = (
+                "I couldn’t find a matching support ticket in your account. "
+                "Open My Support Tickets to review your requests."
+            )
+        else:
+            owned_tickets.sort(key=lambda ticket: ticket.created_at, reverse=True)
+            ticket_lines = [
+                f"{ticket.ticket_id}: {ticket.issue_summary or ticket.customer_message} "
+                f"({_customer_status_label(ticket.status)})."
+                for ticket in owned_tickets[:10]
+            ]
+            answer = (
+                "Here are the latest matching updates from your support tickets:\n"
+                + "\n".join(ticket_lines)
+                + "\nOpen My Support Tickets to see the full timeline."
+            )
+        return ChatResponse(
+            conversation_id=conversation_id,
+            answer=answer,
+            route="ticket_lookup",
+            sources=[],
+            actions=[],
+            memory=MemoryDiagnostics(
+                short_term_used=False,
+                long_term_record_created=False,
+            ),
         )
     if decision.route in {
         ChatRoute.ORDER,
@@ -629,6 +733,80 @@ async def send_ticket_message(
     return {"sent": True, "ticket_id": ticket_id}
 
 
+@router.get("/tickets", response_model=CustomerTicketListResponse)
+async def list_customer_tickets(
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+) -> CustomerTicketListResponse:
+    customer_id = _require_customer(authorization)
+    try:
+        tickets = await run_in_threadpool(support_repository.get_support_tickets)
+    except DataStoreError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Support tickets are temporarily unavailable.",
+        ) from exc
+
+    customer_tickets = sorted(
+        (ticket for ticket in tickets if ticket.customer_id == customer_id),
+        key=lambda ticket: ticket.created_at,
+        reverse=True,
+    )
+    return CustomerTicketListResponse(
+        tickets=[_customer_ticket_summary(ticket) for ticket in customer_tickets]
+    )
+
+
+@router.get("/tickets/{ticket_id}", response_model=CustomerTicketDetail)
+async def get_customer_ticket(
+    ticket_id: TicketId,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+) -> CustomerTicketDetail:
+    customer_id = _require_customer(authorization)
+    try:
+        ticket = await run_in_threadpool(
+            support_repository.get_support_ticket,
+            ticket_id,
+        )
+    except DataStoreError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Support tickets are temporarily unavailable.",
+        ) from exc
+    if ticket is None or ticket.customer_id != customer_id:
+        raise HTTPException(status_code=404, detail="Support ticket could not be found.")
+
+    messages = ticket.conversation_context or [
+        ConversationTurn(
+            role="user",
+            text=ticket.customer_message,
+            created_at=ticket.created_at,
+        )
+    ]
+    updated_at = max(
+        [ticket.created_at]
+        + [change.changed_at for change in ticket.status_history]
+        + ([ticket.customer_update.created_at] if ticket.customer_update else [])
+    )
+    return CustomerTicketDetail(
+        ticket_id=ticket.ticket_id,
+        subject=ticket.issue_summary or ticket.customer_message,
+        status=ticket.status,
+        created_at=ticket.created_at,
+        updated_at=updated_at,
+        description=ticket.customer_message,
+        messages=messages,
+        status_history=[
+            CustomerTicketStatusEvent(
+                previous_status=change.previous_status,
+                status=change.status,
+                changed_at=change.changed_at,
+            )
+            for change in ticket.status_history
+        ],
+        customer_update=ticket.customer_update,
+    )
+
+
 @router.patch(
     "/support/tickets/{ticket_id}/status",
     response_model=SupportTicketStatusResponse,
@@ -768,6 +946,48 @@ def _require_support_agent(authorization: str | None) -> str:
             detail="Your support-agent session is missing or expired. Please sign in again.",
         )
     return staff_id
+
+
+def _require_customer(authorization: str | None) -> str:
+    customer_token = _bearer_token(authorization)
+    if customer_token is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Sign in as the customer who opened these tickets.",
+        )
+    customer_id = demo_authorization_service.resolve_customer(customer_token)
+    if customer_id is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Your customer session is missing or expired. Please sign in again.",
+        )
+    return customer_id
+
+
+def _customer_status_label(status: SupportTicketStatus) -> str:
+    return {
+        "open": "Open",
+        "investigating": "In Progress",
+        "waiting_for_customer": "Pending Customer",
+        "escalated": "In Progress",
+        "resolved": "Resolved",
+        "closed": "Closed",
+    }[status]
+
+
+def _customer_ticket_summary(ticket: SupportTicket) -> CustomerTicketSummary:
+    updated_at = max(
+        [ticket.created_at]
+        + [change.changed_at for change in ticket.status_history]
+        + ([ticket.customer_update.created_at] if ticket.customer_update else [])
+    )
+    return CustomerTicketSummary(
+        ticket_id=ticket.ticket_id,
+        subject=ticket.issue_summary or ticket.customer_message,
+        status=ticket.status,
+        created_at=ticket.created_at,
+        updated_at=updated_at,
+    )
 
 
 def _bearer_token(authorization: str | None) -> str | None:

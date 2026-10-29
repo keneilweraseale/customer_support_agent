@@ -88,6 +88,22 @@ This repository implements the customer-support agent described in
   `python -m app.services.support_agent_accounts --staff-id STAFF-001 --email agent@example.com`.
   Support-agent password hashes are stored in the git-ignored JSON file
   `data/support_agents.json`.
+- **Customer ticket tracking:** The authenticated sidebar includes **My Support
+  Tickets**, with search by ticket ID/subject, status filters and counts, and a
+  detail timeline. Customer access is checked in the API using the bearer token;
+  list and detail responses contain only tickets whose `customer_id` matches
+  the signed-in customer. Legacy tickets without an owner are not exposed.
+  `GET /api/tickets` lists a customer's tickets and
+  `GET /api/tickets/{ticket_id}` returns customer-visible messages, status
+  transitions, and the latest public update without staff notes or customer
+  identifiers. `POST /api/support/tickets/{ticket_id}/message` reuses the
+  existing support-email flow. Replies are emailed to support but are not
+  persisted in the ticket timeline; this demo has no assignment or priority
+  workflow, so those values are not displayed. Statuses stored in JSON are
+  `open`, `investigating`, `waiting_for_customer`, `escalated`, `resolved`, and
+  `closed`; the UI presents customer-friendly labels. Chat questions such as
+  “What is the status of ticket SUP-...?” use the same owned records and do not
+  infer ticket state.
 - **Conversational scope and issue handling:** Harmless car-buying questions
   receive brief general selection guidance while the assistant explains its
   e-commerce support focus; other unrelated questions are politely declined.
@@ -114,6 +130,76 @@ password/account lifecycle before production use.
 The records in `data/` are fictional test data. They are not real customer,
 payment, product, delivery, or review records.
 Demo order and product prices use South African rand (ZAR).
+
+## Ticket Tracking Setup and API
+
+Start the backend and frontend using the existing setup commands below. The
+frontend runs through Vite and calls the API at the configured Vite proxy/API
+origin; use the same origin and backend configuration as the chatbot.
+
+```powershell
+# Backend, from the repository root (after installing requirements.txt)
+uvicorn app.main:app --reload
+
+# Frontend, in another terminal
+cd frontend
+npm install
+npm run dev
+```
+
+Provision a customer account for a fictional seeded customer, then sign in
+through the UI or `POST /api/auth/login`:
+
+```powershell
+python -m app.services.customer_accounts --customer-id CUS-DEMO-002 --email customer@example.com
+```
+
+Use the returned `authorization_token` as `Authorization: Bearer <token>` for
+the ticket list and details. Representative customer-owned ticket data in
+`data/support_tickets.json` follows this shape (timestamps and identifiers are
+illustrative):
+
+```json
+{
+  "ticket_id": "SUP-0738300D0849",
+  "conversation_id": "demo-conversation-1001",
+  "customer_message": "My delivery has not arrived.",
+  "customer_id": "CUS-DEMO-002",
+  "order_id": "ORD-1002",
+  "issue_summary": "Delayed delivery",
+  "conversation_context": [
+    {"role": "user", "text": "My delivery has not arrived.", "created_at": "2026-10-28T08:30:00Z"},
+    {"role": "assistant", "text": "I have opened a support request.", "created_at": "2026-10-28T08:30:00Z"}
+  ],
+  "status": "waiting_for_customer",
+  "status_history": [
+    {"previous_status": "open", "status": "waiting_for_customer", "changed_by": "STAFF-001", "changed_at": "2026-10-28T09:00:00Z", "note": "Internal audit note"}
+  ],
+  "customer_update": {
+    "status": "waiting_for_customer",
+    "message": "Please confirm the delivery address.",
+    "created_at": "2026-10-28T09:00:00Z"
+  },
+  "created_at": "2026-10-28T08:30:00Z"
+}
+```
+
+Customer API endpoints:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/tickets` | List only the authenticated customer's tickets |
+| `GET` | `/api/tickets/{ticket_id}` | Read one owned ticket's public details and timeline |
+| `POST` | `/api/support/tickets/{ticket_id}/message` | Send a reply through configured support email |
+| `POST` | `/api/chat` | Ask a ticket status/update question using the same records |
+
+The ticket endpoints require a customer bearer token. A missing or foreign
+ticket returns `404`; missing/expired authentication returns `401`; temporary
+storage or email failures return `503`. The Postman collection includes
+**My support tickets**, **Ticket details**, **Reply to support ticket**, and
+**Ticket status via chat** requests. Run **Customer login** first so the
+collection's `authorizationToken` variable is populated. Replies require the
+same email configuration as the existing support form.
 
 ## DeepEval evaluation API (Implementation Phases 1–7)
 

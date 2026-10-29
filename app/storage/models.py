@@ -37,6 +37,7 @@ SupportTicketStatus = Literal[
     "waiting_for_customer",
     "escalated",
     "resolved",
+    "closed",
 ]
 
 

@@ -11,6 +11,7 @@ import DamageReport from "./components/DamageReport.jsx";
 import ChatComposer from "./components/ChatComposer.jsx";
 import ChatHeader from "./components/ChatHeader.jsx";
 import MessageList from "./components/MessageList.jsx";
+import TicketTracking from "./components/TicketTracking.jsx";
 
 const welcomeMessage = {
   id: "welcome",
@@ -41,6 +42,7 @@ function routeStatus(route) {
     review_tool: "Review information retrieved",
     rag_and_tool: "Policy and product information retrieved",
     cancellation_check: "Cancellation eligibility checked",
+    ticket_lookup: "Ticket information retrieved",
     clarification: "More information needed",
     conversation_memory: "Earlier conversation recalled",
   }[route] ?? "Support information retrieved";
@@ -58,6 +60,7 @@ export default function App() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isDamageReportOpen, setIsDamageReportOpen] = useState(false);
+  const [isTicketTrackingOpen, setIsTicketTrackingOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   async function signIn(event) {
@@ -165,6 +168,7 @@ export default function App() {
     setDraft("");
     setLoginMessage("");
     setIsDamageReportOpen(false);
+    setIsTicketTrackingOpen(false);
   }
 
   function signOut() {
@@ -176,6 +180,7 @@ export default function App() {
     setLoginMessage("");
     setConversationId(createConversationId());
     setIsDamageReportOpen(false);
+    setIsTicketTrackingOpen(false);
     setIsSidebarOpen(false);
   }
 
@@ -321,7 +326,15 @@ export default function App() {
             authenticated
             disabled={isLoading}
             isDamageReportOpen={isDamageReportOpen}
-            onDamageReport={() => setIsDamageReportOpen(true)}
+            isTicketTrackingOpen={isTicketTrackingOpen}
+            onDamageReport={() => {
+              setIsTicketTrackingOpen(false);
+              setIsDamageReportOpen(true);
+            }}
+            onTickets={() => {
+              setIsDamageReportOpen(false);
+              setIsTicketTrackingOpen(true);
+            }}
             onLogout={signOut}
             onNewChat={startNewChat}
             onClose={() => setIsSidebarOpen(false)}
@@ -365,12 +378,18 @@ export default function App() {
               <div>
                 <p className="workspace-eyebrow">SUPPORT WORKSPACE</p>
                 <h1 className="workspace-title">
-                  {isDamageReportOpen ? "Damage report" : "Customer support"}
+                  {isDamageReportOpen
+                    ? "Damage report"
+                    : isTicketTrackingOpen
+                      ? "My Support Tickets"
+                      : "Customer support"}
                 </h1>
                 <p className="workspace-subtitle">
                   {isDamageReportOpen
                     ? "Tell us what happened and our team will review it."
-                    : "Chat with us about orders, delivery, and more."}
+                    : isTicketTrackingOpen
+                      ? "Review your requests and follow their progress."
+                      : "Chat with us about orders, delivery, and more."}
                 </p>
               </div>
             </div>
@@ -384,6 +403,8 @@ export default function App() {
           aria-label={
             isDamageReportOpen
               ? "Report a damaged item"
+              : isTicketTrackingOpen
+                ? "My support tickets"
               : authorizationToken
                 ? "Customer support chat"
                 : "Sign in to customer support"
@@ -462,6 +483,16 @@ export default function App() {
                 <DamageReport
                   authorizationToken={authorizationToken}
                   onBack={() => setIsDamageReportOpen(false)}
+                />
+              ) : isTicketTrackingOpen ? (
+                <TicketTracking
+                  authorizationToken={authorizationToken}
+                  onBack={() => setIsTicketTrackingOpen(false)}
+                  onSendMessage={sendTicketMessage}
+                  onSessionExpired={(message) => {
+                    setAuthorizationToken("");
+                    setLoginMessage(message);
+                  }}
                 />
               ) : (
                 <>
