@@ -102,6 +102,20 @@ class SupportTicket(RecordModel):
     created_at: datetime
 
 
+class DamageReport(RecordModel):
+    report_id: Identifier
+    idempotency_key: Annotated[
+        str,
+        StringConstraints(min_length=16, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"),
+    ]
+    request_fingerprint: Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{64}$")]
+    customer_id: Identifier
+    order_id: Identifier
+    description: Annotated[str, StringConstraints(max_length=1000)] | None = None
+    image_filename: Annotated[str, StringConstraints(pattern=r"^[a-f0-9-]{36}\.(jpg|png)$")]
+    created_at: datetime
+
+
 class OrderItem(RecordModel):
     product_id: Identifier
     quantity: int = Field(gt=0)

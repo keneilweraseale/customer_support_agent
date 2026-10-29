@@ -6,3 +6,5 @@ node_modules/
 dist/
 *.py[cod]
 data/customer_accounts.json
+data/damage_reports.json
+data/damage_report_images/

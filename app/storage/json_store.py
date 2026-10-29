@@ -12,6 +12,7 @@ from app.storage.models import (
     CancellationEvent,
     ConversationMemory,
     CustomerAccount,
+    DamageReport,
     Delivery,
     Order,
     Payment,
@@ -36,6 +37,10 @@ class ConversationOwnershipError(DataStoreError):
 
 class CancellationConsistencyError(DataStoreError):
     """Raised when the order and cancellation history cannot be synchronized."""
+
+
+class DamageReportConflictError(DataStoreError):
+    """Raised when an idempotency key is reused for different report contents."""
 
 
 class JsonRepository(SupportRepository):
@@ -183,6 +188,63 @@ class JsonRepository(SupportRepository):
                 (ticket for ticket in tickets if ticket.ticket_id == ticket_id),
                 None,
             )
+
+    def create_damage_report(
+        self,
+        report: DamageReport,
+        image_bytes: bytes,
+    ) -> tuple[DamageReport, bool]:
+        with self._write_lock:
+            reports = self._read_optional_records(
+                "damage_reports.json",
+                DamageReport,
+                "report_id",
+            )
+            previous = next(
+                (
+                    existing for existing in reports
+                    if existing.customer_id == report.customer_id
+                    and existing.idempotency_key == report.idempotency_key
+                ),
+                None,
+            )
+            if previous is not None:
+                if previous.request_fingerprint != report.request_fingerprint:
+                    raise DamageReportConflictError(
+                        "Idempotency key was already used for a different report."
+                    )
+                return previous, False
+
+            image_directory = self.data_directory / "damage_report_images"
+            image_path = image_directory / report.image_filename
+            try:
+                image_directory.mkdir(parents=True, exist_ok=True)
+                if os.name != "nt":
+                    os.chmod(image_directory, 0o700)
+                with tempfile.NamedTemporaryFile(
+                    mode="wb",
+                    dir=image_directory,
+                    delete=False,
+                ) as temporary_file:
+                    temporary_path = Path(temporary_file.name)
+                    temporary_file.write(image_bytes)
+                if os.name != "nt":
+                    os.chmod(temporary_path, 0o600)
+                os.replace(temporary_path, image_path)
+                reports.append(report)
+                self._write_records("damage_reports.json", reports)
+            except OSError as exc:
+                if image_path.exists():
+                    image_path.unlink()
+                raise DataStoreError("Could not save damage report.") from exc
+            except DataStoreError:
+                if image_path.exists():
+                    image_path.unlink()
+                raise
+            finally:
+                if "temporary_path" in locals() and temporary_path.exists():
+                    temporary_path.unlink()
+            return report, True
 
     def update_cancellation_event(self, event: CancellationEvent) -> None:
         with self._write_lock:

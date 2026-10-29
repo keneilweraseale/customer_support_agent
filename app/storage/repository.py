@@ -5,6 +5,7 @@ from app.storage.models import (
     CancellationEvent,
     ConversationMemory,
     CustomerAccount,
+    DamageReport,
     Delivery,
     Order,
     Payment,
@@ -37,6 +38,12 @@ class SupportRepository(Protocol):
     def append_support_ticket(self, ticket: SupportTicket) -> None: ...
 
     def get_support_ticket(self, ticket_id: str) -> SupportTicket | None: ...
+
+    def create_damage_report(
+        self,
+        report: DamageReport,
+        image_bytes: bytes,
+    ) -> tuple[DamageReport, bool]: ...
 
     def expire_old_cancellation_events(
         self,

@@ -371,3 +371,79 @@ or image-only PDFs require OCR before ingestion. The sample policy documents
 are fictional test materials, not actual company policies. Successful
 ingestion replaces each document's existing chunks in
 `data/policy_chunks.json`; it does not duplicate chunks on repeated runs.
+
+## Live Picture damage reporting
+
+Signed-in customers can use **Report damaged item** in the chat header or
+**Report Damaged Item** in the first quick-action list to open Live Picture.
+The customer must open the device camera, capture a new photo, review or retake
+it, and confirm the photo before entering an order reference and submitting.
+There is no image picker, file upload control, gallery fallback, or paste
+workflow. The browser camera is accessed with `getUserMedia()` and stopped when
+closed, after capture, or when the component unmounts. Camera access generally
+requires HTTPS, except on localhost; the user must grant camera permission.
+
+The React workflow is implemented in
+`frontend/src/components/DamageReport.jsx` and uses the existing JSON API helper
+in `frontend/src/api.js`. The FastAPI route is implemented in
+`app/api/damage_reports.py` at `POST /api/damage-reports`. It uses the existing
+demo authorization token and the signed-in customer's order ownership. Pass a
+unique `Idempotency-Key` header (16–64 letters, digits, underscores, or hyphens)
+to prevent retry duplicates.
+
+Request fields:
+
+```json
+{
+  "authorization_token": "<current signed-in session token>",
+  "order_id": "ORD-1001",
+  "image_data": "data:image/jpeg;base64,<base64-encoded camera capture>",
+  "description": "The corner of the box is crushed."
+}
+```
+
+`description` is optional (up to 1,000 characters). `image_data` must contain a
+JPEG or PNG camera capture no larger than 5 MiB. Example successful response:
+
+```json
+{
+  "report_id": "c1f3a5b7-1234-4567-89ab-cdef01234567",
+  "order_id": "ORD-1001",
+  "created": true,
+  "message": "Your damage report was submitted for review.",
+  "created_at": "2026-10-29T08:30:00Z"
+}
+```
+
+An identical retry returns the original report identifier with `"created":
+false`. Reusing the idempotency key for different report contents returns
+`409`; expired/invalid sessions return `401`; an unknown or another customer's
+order returns `404`; invalid image data returns `422` or `415`; oversized
+images return `413`; and persistence failures return `503`. Reports and private
+image bytes are persisted separately in `data/damage_reports.json` and
+`data/damage_report_images/` via the existing JSON demo storage pattern. These
+runtime files are git-ignored and there is no public image-serving endpoint.
+This disk-backed demonstration storage is not a substitute for production
+encrypted/private object storage, retention policies, backups, or durable
+multi-process transaction handling. Submission records the report only; it
+does not approve a claim, refund, or replacement.
+
+Run backend tests from the project root:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_damage_reports.py
+```
+
+Run the frontend build from `frontend`:
+
+```powershell
+npm run build
+```
+
+For manual camera verification, start the FastAPI app and Vite frontend, sign
+in with a configured demo account, open Live Picture on a device with a camera,
+grant the browser permission, take a photo, and verify that retake, confirmation,
+submission, and the report reference work. Also test denied permission and a
+device without camera hardware; both should show a helpful message without
+offering image selection. For a physical device, serve the frontend and API
+over HTTPS and configure them to share the same origin or suitable proxy.
