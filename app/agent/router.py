@@ -13,7 +13,15 @@ ORDER_ID_PATTERN = re.compile(r"\bORD-[A-Z0-9_-]+\b", re.IGNORECASE)
 PRODUCT_ID_PATTERN = re.compile(r"\bPROD-[A-Z0-9_-]+\b", re.IGNORECASE)
 
 ORDER_WORDS = ("order", "orders")
-DELIVERY_WORDS = ("delivery", "deliver", "shipment", "tracking", "track")
+DELIVERY_WORDS = (
+    "delivery",
+    "deliver",
+    "shipment",
+    "tracking",
+    "track",
+    "parcel",
+    "package",
+)
 PAYMENT_WORDS = ("payment", "paid", "charge", "charged", "transaction")
 PRODUCT_WORDS = ("product", "stock", "availability", "available", "price", "in stock")
 REVIEW_WORDS = ("review", "reviews", "rated", "rating")
@@ -48,6 +56,18 @@ ORDER_SEARCH_WORDS = (
     "do not remember",
     "forgot my order",
     "no order number",
+    "other order",
+    "other one",
+    "another one",
+    "second one",
+)
+OTHER_ORDER_WORDS = (
+    "the other one",
+    "other one",
+    "the other order",
+    "other order",
+    "another one",
+    "second one",
 )
 CANCEL_ACTION_PATTERN = re.compile(
     r"\b(cancel|canceled|cancelled|canceling|cancelling)\b",
@@ -63,9 +83,11 @@ class ChatRoute(str, Enum):
     PRODUCT = "product_tool"
     REVIEWS = "review_tool"
     MIXED = "rag_and_tool"
+    MULTI = "multi_tool"
     CANCELLATION = "cancellation_check"
     CLARIFICATION = "clarification"
     BILLING_ISSUE = "billing_issue"
+    CONVERSATION_MEMORY = "conversation_memory"
     OUT_OF_SCOPE = "out_of_scope"
     GREETING = "greeting"
 
@@ -79,6 +101,7 @@ class RouteDecision:
     route: ChatRoute
     order_id: str | None = None
     product_id: str | None = None
+    subtasks: tuple[ChatRoute, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -133,6 +156,7 @@ class ChatOrchestrator:
                 ChatRoute.PAYMENT,
                 ChatRoute.CANCELLATION,
                 ChatRoute.BILLING_ISSUE,
+                ChatRoute.MULTI,
             }
             and decision.order_id is None
             and context_order_id is not None
@@ -142,6 +166,7 @@ class ChatOrchestrator:
                 decision.route,
                 order_id=context_order_id,
                 product_id=decision.product_id,
+                subtasks=decision.subtasks,
             )
         if decision.route == ChatRoute.CLARIFICATION:
             return OrchestratedChatResult(
@@ -152,6 +177,19 @@ class ChatOrchestrator:
             )
 
         if decision.route == ChatRoute.OUT_OF_SCOPE:
+            if _is_car_purchase_question(message):
+                return OrchestratedChatResult(
+                    answer=(
+                        "For a car purchase, compare total ownership cost, safety, "
+                        "reliability, fuel or charging needs, space, insurance, and "
+                        "warranty coverage; then test-drive your shortlist. I "
+                        "specialize in this store’s e-commerce support, but I’m "
+                        "happy to help with products or orders here."
+                    ),
+                    route=decision.route,
+                    sources=[],
+                    actions=[],
+                )
             return OrchestratedChatResult(
                 answer=(
                     "Hi there! I’m here to help with this store’s orders, "
@@ -199,6 +237,32 @@ class ChatOrchestrator:
                 actual_tool_calls,
             )
 
+        if decision.route == ChatRoute.MULTI:
+            if decision.order_id is None:
+                if ChatRoute.POLICY not in decision.subtasks:
+                    return OrchestratedChatResult(
+                        answer=(
+                            "Hi! I can help check your order and delivery status. "
+                            "Please provide the order reference so I can look it up."
+                        ),
+                        route=ChatRoute.CLARIFICATION,
+                        sources=[],
+                        actions=[],
+                    )
+            if customer_id is None:
+                return OrchestratedChatResult(
+                    answer="Please sign in before I look up private order information.",
+                    route=ChatRoute.MULTI,
+                    sources=[],
+                    actions=[],
+                )
+            return self._handle_multiple_order_tasks(
+                message,
+                decision,
+                customer_id,
+                actual_tool_calls,
+            )
+
         if decision.route == ChatRoute.POLICY:
             return self._answer_policy(message, actual_tool_calls)
 
@@ -212,17 +276,29 @@ class ChatOrchestrator:
             ChatRoute.CANCELLATION,
         ):
             if (
-                decision.route == ChatRoute.DELIVERY
-                and decision.order_id is None
+                decision.order_id is None
                 and customer_id is not None
                 and self._customer_orders_tool is not None
                 and requests_order_search(message)
             ):
-                return self._find_delivery_order(
-                    message,
-                    customer_id,
-                    actual_tool_calls,
-                )
+                if decision.route == ChatRoute.DELIVERY:
+                    return self._find_delivery_order(
+                        message,
+                        customer_id,
+                        actual_tool_calls,
+                        context_order_id if requests_other_order(message) else None,
+                    )
+                if (
+                    decision.route in {ChatRoute.ORDER, ChatRoute.PAYMENT}
+                    and requests_other_order(message)
+                    and context_order_id is not None
+                ):
+                    return self._find_other_order(
+                        decision.route,
+                        customer_id,
+                        context_order_id,
+                        actual_tool_calls,
+                    )
             if decision.order_id is None:
                 return OrchestratedChatResult(
                     answer=(
@@ -264,6 +340,44 @@ class ChatOrchestrator:
                 actual_tool_calls,
             )
             formatted = self._format_order_result(decision.route, result)
+            if (
+                decision.route == ChatRoute.PAYMENT
+                and _is_refund_status_request(message)
+            ):
+                formatted = self._format_refund_status_result(
+                    result,
+                    decision.order_id,
+                )
+            elif (
+                decision.route == ChatRoute.DELIVERY
+                and _is_repeated_delivery_complaint(message)
+            ):
+                formatted = OrchestratedChatResult(
+                    answer=(
+                        "I’m sorry this has happened repeatedly; I understand "
+                        f"why it’s frustrating. {formatted.answer}"
+                    ),
+                    route=formatted.route,
+                    sources=formatted.sources,
+                    actions=formatted.actions,
+                    needs_human_support=formatted.needs_human_support,
+                )
+            if (
+                decision.route == ChatRoute.DELIVERY
+                and _requests_address_change(message)
+            ):
+                formatted = OrchestratedChatResult(
+                    answer=(
+                        f"{formatted.answer}\n\n"
+                        "I can’t change a delivery address through this demo system. "
+                        "I’m escalating the request so support can check whether "
+                        "the address can still be updated."
+                    ),
+                    route=formatted.route,
+                    sources=formatted.sources,
+                    actions=formatted.actions,
+                    needs_human_support=True,
+                )
             return self._with_tool_calls(formatted, actual_tool_calls)
 
         if decision.route == ChatRoute.PRODUCT:
@@ -305,6 +419,144 @@ class ChatOrchestrator:
             route=ChatRoute.CLARIFICATION,
             sources=[],
             actions=[],
+        )
+
+    def _format_refund_status_result(
+        self,
+        result: dict[str, object],
+        order_id: str,
+    ) -> OrchestratedChatResult:
+        if result.get("unavailable") is True:
+            answer = (
+                "I couldn’t access the payment record, so I can’t verify whether "
+                "a refund was processed. Please try again later or send this "
+                "request to support."
+            )
+            needs_human_support = True
+        else:
+            payments = result.get("payments")
+            valid_payments = (
+                payments
+                if isinstance(payments, list)
+                and payments
+                and all(
+                    isinstance(item, dict)
+                    and isinstance(item.get("payment_id"), str)
+                    and isinstance(item.get("payment_status"), str)
+                    for item in payments
+                )
+                else None
+            )
+            if result.get("found") is not True or valid_payments is None:
+                answer = (
+                    f"I couldn’t verify the payment or refund record for order "
+                    f"{order_id}. Please check the order reference or contact "
+                    "support for help."
+                )
+                needs_human_support = True
+            elif all(
+                item["payment_status"] == "refunded"
+                for item in valid_payments
+            ):
+                answer = (
+                    f"The payment records for order {order_id} show the payment "
+                    "as refunded."
+                )
+                needs_human_support = False
+            else:
+                payment_summary = "; ".join(
+                    f"{item['payment_id']} is recorded as {item['payment_status']}"
+                    for item in valid_payments
+                )
+                answer = (
+                    f"I checked order {order_id}; its payment record shows "
+                    f"{payment_summary}. This system has no separate refund "
+                    "record, so I can’t confirm that a refund was processed. "
+                    "I can send this to support for review."
+                )
+                needs_human_support = True
+        return OrchestratedChatResult(
+            answer=answer,
+            route=ChatRoute.PAYMENT,
+            sources=[],
+            actions=[],
+            needs_human_support=needs_human_support,
+        )
+
+    def _handle_multiple_order_tasks(
+        self,
+        message: str,
+        decision: RouteDecision,
+        customer_id: str,
+        actual_tool_calls: list[dict[str, object]],
+    ) -> OrchestratedChatResult:
+        tools = {
+            ChatRoute.ORDER: (self._order_tool, "get_order_status"),
+            ChatRoute.DELIVERY: (self._delivery_tool, "get_delivery_status"),
+            ChatRoute.PAYMENT: (self._payment_tool, "get_payment_status"),
+        }
+        answers: list[str] = []
+        sources: list[dict[str, str]] = []
+        needs_human_support = False
+        for route in decision.subtasks:
+            if route == ChatRoute.POLICY:
+                policy_result = self._answer_policy(message, actual_tool_calls)
+                answers.append(f"Policy: {policy_result.answer}")
+                sources.extend(policy_result.sources)
+                needs_human_support = (
+                    needs_human_support or policy_result.needs_human_support
+                )
+                continue
+            if decision.order_id is None:
+                if route == ChatRoute.DELIVERY and _is_repeated_delivery_complaint(message):
+                    answers.append(
+                        "Delivery: I’m sorry this has happened repeatedly; I "
+                        "understand why it’s frustrating. Please provide the "
+                        "order reference so I can check the latest update."
+                    )
+                else:
+                    answers.append(
+                        f"{_route_label(route)}: Please provide your order "
+                        "reference so I can check this."
+                    )
+                continue
+            tool, tool_name = tools[route]
+            result = self._invoke_tool(
+                tool,
+                {
+                    "order_id": decision.order_id or "",
+                    "customer_id": customer_id,
+                },
+                tool_name,
+                actual_tool_calls,
+            )
+            formatted = self._format_order_result(route, result)
+            empathy = (
+                "I’m sorry this has happened repeatedly; I understand why it’s "
+                "frustrating. "
+                if route == ChatRoute.DELIVERY
+                and _is_repeated_delivery_complaint(message)
+                else ""
+            )
+            answers.append(f"{_route_label(route)}: {empathy}{formatted.answer}")
+            needs_human_support = (
+                needs_human_support or result.get("unavailable") is True
+            )
+
+        if _requests_address_change(message):
+            answers.append(
+                "Address change: I can’t change a delivery address through this "
+                "demo system. I’m escalating the request so support can check "
+                "whether it can still be updated."
+            )
+            needs_human_support = True
+        return OrchestratedChatResult(
+            answer="\n".join(answers),
+            route=ChatRoute.MULTI,
+            sources=sources,
+            actions=[],
+            needs_human_support=needs_human_support,
+            actual_tool_calls=list(actual_tool_calls),
         )
 
     def _answer_policy(
@@ -568,6 +820,7 @@ class ChatOrchestrator:
         message: str,
         customer_id: str,
         actual_tool_calls: list[dict[str, object]],
+        exclude_order_id: str | None = None,
     ) -> OrchestratedChatResult:
         if self._customer_orders_tool is None:
             raise RuntimeError("Customer order search tool is not configured.")
@@ -595,7 +848,11 @@ class ChatOrchestrator:
             for item in orders
             if isinstance(item, dict)
             and isinstance(item.get("order_id"), str)
-            and item.get("order_status") in {"processing", "shipped"}
+            and (
+                exclude_order_id is not None
+                or item.get("order_status") in {"processing", "shipped"}
+            )
+            and item.get("order_id") != exclude_order_id
         ]
         if len(candidates) != 1:
             if candidates:
@@ -641,6 +898,61 @@ class ChatOrchestrator:
             actions=[],
             needs_human_support=should_escalate,
         ), actual_tool_calls)
+
+    def _find_other_order(
+        self,
+        route: ChatRoute,
+        customer_id: str,
+        current_order_id: str,
+        actual_tool_calls: list[dict[str, object]],
+    ) -> OrchestratedChatResult:
+        if self._customer_orders_tool is None:
+            raise RuntimeError("Customer order search tool is not configured.")
+        result = self._invoke_tool(
+            self._customer_orders_tool,
+            {"customer_id": customer_id},
+            "find_customer_orders",
+            actual_tool_calls,
+        )
+        orders = result.get("orders")
+        candidates = [
+            item
+            for item in orders
+            if isinstance(item, dict)
+            and isinstance(item.get("order_id"), str)
+            and item["order_id"] != current_order_id
+        ] if isinstance(orders, list) else []
+        if len(candidates) != 1:
+            answer = (
+                "I couldn’t access your other orders just now. Please share the "
+                "order reference so I can check it."
+                if result.get("unavailable") is True
+                else "I couldn’t safely identify a single other order. Please "
+                "tell me which order reference you mean."
+            )
+            return self._with_tool_calls(OrchestratedChatResult(
+                answer=answer,
+                route=ChatRoute.CLARIFICATION,
+                sources=[],
+                actions=[],
+                needs_human_support=result.get("unavailable") is True,
+            ), actual_tool_calls)
+
+        order_id = candidates[0]["order_id"]
+        tool, tool_name = {
+            ChatRoute.ORDER: (self._order_tool, "get_order_status"),
+            ChatRoute.PAYMENT: (self._payment_tool, "get_payment_status"),
+        }[route]
+        order_result = self._invoke_tool(
+            tool,
+            {"order_id": order_id, "customer_id": customer_id},
+            tool_name,
+            actual_tool_calls,
+        )
+        return self._with_tool_calls(
+            self._format_order_result(route, order_result),
+            actual_tool_calls,
+        )
 
     def _invoke_tool(
         self,
@@ -713,7 +1025,11 @@ class ChatOrchestrator:
         result: dict[str, object],
     ) -> OrchestratedChatResult:
         if result.get("unavailable") is True:
-            answer = "Order information is temporarily unavailable. Please try again later."
+            answer = {
+                ChatRoute.ORDER: "Order information is temporarily unavailable. Please try again later.",
+                ChatRoute.DELIVERY: "Delivery information is temporarily unavailable. Please try again later.",
+                ChatRoute.PAYMENT: "Payment information is temporarily unavailable. Please try again later.",
+            }[route]
         elif result.get("found") is not True:
             answer = "I couldn’t find that order for this demo customer."
         elif route == ChatRoute.ORDER:
@@ -734,14 +1050,25 @@ class ChatOrchestrator:
             ):
                 answer = "I couldn’t find delivery updates for that order."
             else:
-                answer = "; ".join(
+                delivery_summary = "; ".join(
                     f"Shipment {item['shipment_id']} is {item['delivery_status']}"
                     + (
                         f", estimated for {item['estimated_delivery']}."
                         if item.get("estimated_delivery")
                         else "."
                     )
+                    + (
+                        f" Delay reason: {item['delay_reason']}."
+                        if isinstance(item.get("delay_reason"), str)
+                        else ""
+                    )
                     for item in deliveries
+                )
+                order_id = result.get("order_id")
+                answer = (
+                    f"For order {order_id}: {delivery_summary}"
+                    if isinstance(order_id, str)
+                    else delivery_summary
                 )
         else:
             payments = result.get("payments")
@@ -753,10 +1080,16 @@ class ChatOrchestrator:
             ):
                 answer = "I couldn’t find payment information for that order."
             else:
-                answer = "; ".join(
+                payment_summary = "; ".join(
                     f"Payment {item['payment_id']} is {item['payment_status']}"
                     + (f" (code: {item['error_code']})" if item.get("error_code") else "")
                     for item in payments
+                )
+                order_id = result.get("order_id")
+                answer = (
+                    f"For order {order_id}: {payment_summary}"
+                    if isinstance(order_id, str)
+                    else payment_summary
                 )
         return OrchestratedChatResult(
             answer=answer,
@@ -843,8 +1176,15 @@ class ChatOrchestrator:
             return "Which order would you like to check for cancellation? Please provide its order reference."
         if has_any(message, DELIVERY_WORDS + PAYMENT_WORDS + ORDER_WORDS):
             if customer_id is None:
-                return "Please sign in and provide your order reference so I can look up private order information."
-            return "Please provide your order reference (for example, ORD-1001)."
+                answer = "Please sign in and provide your order reference so I can look up private order information."
+            else:
+                answer = "Please provide your order reference (for example, ORD-1001)."
+            if _is_repeated_delivery_complaint(message):
+                return (
+                    "I’m sorry this has happened repeatedly; I understand why "
+                    f"it’s frustrating. {answer}"
+                )
+            return answer
         if has_any(message, PRODUCT_WORDS) and decision.product_id is None:
             return "Please provide the product reference (for example, PROD-001)."
         return "I couldn’t determine what information you need. Could you clarify your question?"
@@ -893,11 +1233,35 @@ def classify_message(message: str) -> RouteDecision:
         ) or not has_policy_intent:
             return RouteDecision(ChatRoute.CANCELLATION, order_id, product_id)
 
+    if _is_refund_status_request(normalized):
+        return RouteDecision(ChatRoute.PAYMENT, order_id, product_id)
+
     if has_product_intent and has_policy_intent and not product_id:
         return RouteDecision(ChatRoute.CLARIFICATION, order_id, product_id)
 
     if has_product_intent and has_policy_intent and product_id:
         return RouteDecision(ChatRoute.MIXED, order_id, product_id)
+
+    order_tasks: list[ChatRoute] = []
+    if (
+        has_order_intent
+        and not requests_order_search(message)
+        and not requests_other_order(message)
+    ):
+        order_tasks.append(ChatRoute.ORDER)
+    if has_delivery_intent or has_any(normalized, ARRIVAL_WORDS):
+        order_tasks.append(ChatRoute.DELIVERY)
+    if has_payment_intent:
+        order_tasks.append(ChatRoute.PAYMENT)
+    if has_policy_intent and order_tasks:
+        order_tasks.append(ChatRoute.POLICY)
+    if len(order_tasks) > 1:
+        return RouteDecision(
+            ChatRoute.MULTI,
+            order_id,
+            product_id,
+            tuple(order_tasks),
+        )
 
     if has_payment_intent:
         return RouteDecision(ChatRoute.PAYMENT, order_id, product_id)
@@ -928,8 +1292,81 @@ def has_any(text: str, terms: tuple[str, ...]) -> bool:
     return any(term in text for term in terms)
 
 
+def _is_refund_status_request(message: str) -> bool:
+    normalized = message.casefold()
+    return has_any(normalized, ("refund",)) and has_any(
+        normalized,
+        (
+            "processed",
+            "process",
+            "status",
+            "issued",
+            "received",
+            "arrived",
+            "completed",
+            "complete",
+        ),
+    )
+
+
+def _is_repeated_delivery_complaint(message: str) -> bool:
+    normalized = message.casefold()
+    complaint_cues = (
+        "third time",
+        "again",
+        "repeated",
+        "tired of this",
+        "another delay",
+        "once more",
+    )
+    return has_any(normalized, DELIVERY_WORDS + ARRIVAL_WORDS) and has_any(
+        normalized,
+        complaint_cues,
+    )
+
+
+def _is_car_purchase_question(message: str) -> bool:
+    normalized = message.casefold()
+    mentions_vehicle = has_any(normalized, ("car", "vehicle", "automobile"))
+    asks_purchase_advice = has_any(
+        normalized,
+        ("buy", "purchase", "recommend", "should i get"),
+    )
+    return mentions_vehicle and asks_purchase_advice
+
+
 def requests_order_search(message: str) -> bool:
     return has_any(message.casefold(), ORDER_SEARCH_WORDS)
+
+
+def requests_other_order(message: str) -> bool:
+    return has_any(message.casefold(), OTHER_ORDER_WORDS)
+
+
+def _requests_address_change(message: str) -> bool:
+    normalized = message.casefold()
+    return has_any(
+        normalized,
+        (
+            "change my delivery address",
+            "change the delivery address",
+            "change delivery address",
+            "update my delivery address",
+            "update the delivery address",
+            "update delivery address",
+            "change my address",
+            "update my address",
+            "redirect my parcel",
+        ),
+    )
+
+
+def _route_label(route: ChatRoute) -> str:
+    return {
+        ChatRoute.ORDER: "Order status",
+        ChatRoute.DELIVERY: "Delivery",
+        ChatRoute.PAYMENT: "Payment",
+    }[route]
 
 
 def build_default_orchestrator() -> ChatOrchestrator:

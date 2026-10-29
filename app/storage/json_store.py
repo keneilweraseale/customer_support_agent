@@ -20,7 +20,9 @@ from app.storage.models import (
     PolicyDocument,
     Product,
     Review,
+    SupportAgentAccount,
     SupportTicket,
+    SupportTicketStatus,
 )
 from app.storage.repository import SupportRepository
 
@@ -39,8 +41,8 @@ class CancellationConsistencyError(DataStoreError):
     """Raised when the order and cancellation history cannot be synchronized."""
 
 
-class DamageReportConflictError(DataStoreError):
-    """Raised when an idempotency key is reused for different report contents."""
+class SupportTicketConflictError(DataStoreError):
+    """Raised when a ticket changed before a requested status update was saved."""
 
 
 class JsonRepository(SupportRepository):
@@ -189,62 +191,37 @@ class JsonRepository(SupportRepository):
                 None,
             )
 
-    def create_damage_report(
+    def update_support_ticket(
         self,
-        report: DamageReport,
-        image_bytes: bytes,
-    ) -> tuple[DamageReport, bool]:
+        ticket: SupportTicket,
+        expected_status: SupportTicketStatus,
+    ) -> SupportTicket | None:
         with self._write_lock:
-            reports = self._read_optional_records(
-                "damage_reports.json",
-                DamageReport,
-                "report_id",
+            tickets = self._read_optional_records(
+                "support_tickets.json",
+                SupportTicket,
+                "ticket_id",
             )
-            previous = next(
+            ticket_index = next(
                 (
-                    existing for existing in reports
-                    if existing.customer_id == report.customer_id
-                    and existing.idempotency_key == report.idempotency_key
+                    index
+                    for index, existing in enumerate(tickets)
+                    if existing.ticket_id == ticket.ticket_id
                 ),
                 None,
             )
-            if previous is not None:
-                if previous.request_fingerprint != report.request_fingerprint:
-                    raise DamageReportConflictError(
-                        "Idempotency key was already used for a different report."
-                    )
-                return previous, False
-
-            image_directory = self.data_directory / "damage_report_images"
-            image_path = image_directory / report.image_filename
-            try:
-                image_directory.mkdir(parents=True, exist_ok=True)
-                if os.name != "nt":
-                    os.chmod(image_directory, 0o700)
-                with tempfile.NamedTemporaryFile(
-                    mode="wb",
-                    dir=image_directory,
-                    delete=False,
-                ) as temporary_file:
-                    temporary_path = Path(temporary_file.name)
-                    temporary_file.write(image_bytes)
-                if os.name != "nt":
-                    os.chmod(temporary_path, 0o600)
-                os.replace(temporary_path, image_path)
-                reports.append(report)
-                self._write_records("damage_reports.json", reports)
-            except OSError as exc:
-                if image_path.exists():
-                    image_path.unlink()
-                raise DataStoreError("Could not save damage report.") from exc
-            except DataStoreError:
-                if image_path.exists():
-                    image_path.unlink()
-                raise
-            finally:
-                if "temporary_path" in locals() and temporary_path.exists():
-                    temporary_path.unlink()
-            return report, True
+            if ticket_index is None:
+                return None
+            existing = tickets[ticket_index]
+            if existing.status != expected_status:
+                raise SupportTicketConflictError(
+                    "Support ticket status changed before the update was saved."
+                )
+            if existing.customer_id != ticket.customer_id:
+                raise DataStoreError("Support ticket owner cannot be changed.")
+            tickets[ticket_index] = ticket
+            self._write_records("support_tickets.json", tickets)
+            return ticket
 
     def update_cancellation_event(self, event: CancellationEvent) -> None:
         with self._write_lock:
@@ -394,6 +371,42 @@ class JsonRepository(SupportRepository):
                 raise DataStoreError("The account must be linked to a known customer.")
             accounts.append(account)
             self._write_records("customer_accounts.json", accounts)
+
+    def get_support_agent_accounts(self) -> list[SupportAgentAccount]:
+        with self._write_lock:
+            accounts = self._read_optional_records(
+                "support_agents.json",
+                SupportAgentAccount,
+                "staff_id",
+            )
+            normalized_emails = [account.email.casefold() for account in accounts]
+            staff_ids = [account.staff_id for account in accounts]
+            if len(normalized_emails) != len(set(normalized_emails)):
+                raise DataStoreError("Support-agent account emails must be unique.")
+            if len(staff_ids) != len(set(staff_ids)):
+                raise DataStoreError("Support-agent IDs must be unique.")
+            return accounts
+
+    def create_support_agent_account(self, account: SupportAgentAccount) -> None:
+        with self._write_lock:
+            accounts = self._read_optional_records(
+                "support_agents.json",
+                SupportAgentAccount,
+                "staff_id",
+            )
+            if any(
+                existing.email.casefold() == account.email.casefold()
+                for existing in accounts
+            ):
+                raise DataStoreError(
+                    "A support-agent account already exists for that email address."
+                )
+            if any(existing.staff_id == account.staff_id for existing in accounts):
+                raise DataStoreError(
+                    "A support-agent account already exists for that staff ID."
+                )
+            accounts.append(account)
+            self._write_records("support_agents.json", accounts)
 
     def get_orders(self) -> list[Order]:
         with self._write_lock:

@@ -15,6 +15,20 @@ _OPAQUE_TOKEN = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{40,}(?![A-Za-z0-9_-
 _BEARER_TOKEN = re.compile(r"\bBearer\s+\S+", re.IGNORECASE)
 _PAYMENT_CARD = re.compile(r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)")
 _EMAIL_ADDRESS = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+_ORDER_REFERENCE = re.compile(r"\bORD-[A-Z0-9_-]+\b", re.IGNORECASE)
+_CONVERSATION_RECALL_CUES = (
+    "do you remember",
+    "can you remember",
+    "remember what we",
+    "remember what i",
+    "what did we talk",
+    "what were we talking",
+    "what did we discuss",
+    "what were we discussing",
+    "what did i ask",
+    "what did i say",
+    "what did we say",
+)
 
 
 class ConversationMemoryService:
@@ -72,3 +86,51 @@ def sanitize_sensitive_text(text: str) -> str:
     sanitized = _PAYMENT_CARD.sub("[redacted]", sanitized)
     sanitized = _EMAIL_ADDRESS.sub("[redacted]", sanitized)
     return sanitized[:2000]
+
+
+def is_conversation_recall_request(text: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9\s]", "", text.casefold())
+    return any(cue in normalized for cue in _CONVERSATION_RECALL_CUES)
+
+
+def format_conversation_recall(turns: list[ConversationTurn]) -> str:
+    recent_turns = turns[-4:]
+    if not recent_turns:
+        return (
+            "I don’t have earlier messages available in this chat yet. "
+            "Tell me what you’d like to continue discussing, and I’ll keep "
+            "the conversation in context."
+        )
+    labels = {"user": "You", "assistant": "I"}
+    recap = "\n".join(
+        f"{labels[turn.role]}: {turn.text}"
+        for turn in recent_turns
+    )
+    return f"Yes—here’s what we discussed most recently:\n{recap}"
+
+
+def unambiguous_order_context(
+    turns: list[ConversationTurn],
+    last_order_id: str | None,
+) -> str | None:
+    if len(turns) >= 2:
+        recent_order_ids = {
+            order_id.upper()
+            for turn in turns[-2:]
+            for order_id in _ORDER_REFERENCE.findall(turn.text)
+        }
+        if len(recent_order_ids) == 1:
+            return recent_order_ids.pop()
+        if len(recent_order_ids) > 1:
+            return None
+
+    conversation_order_ids = {
+        order_id.upper()
+        for turn in turns
+        for order_id in _ORDER_REFERENCE.findall(turn.text)
+    }
+    if len(conversation_order_ids) == 1:
+        return conversation_order_ids.pop()
+    if not conversation_order_ids:
+        return last_order_id
+    return None

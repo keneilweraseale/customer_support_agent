@@ -1,4 +1,8 @@
+import json
+import shutil
 import smtplib
+from datetime import datetime, timezone
+from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -10,7 +14,8 @@ from app.agent.router import (
     build_default_orchestrator,
 )
 from app.main import app
-from app.storage.models import CustomerAccount
+from app.storage.json_store import SupportTicketConflictError
+from app.storage.models import CustomerAccount, SupportTicket
 
 client = TestClient(app)
 
@@ -142,6 +147,302 @@ def test_unresolved_chat_creates_owned_ticket_without_external_contact_links(
     assert "CUS-DEMO-001" in tickets
 
 
+def test_escalated_ticket_preserves_recent_conversation_and_order_reference(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    class FakeOrchestrator:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def handle(self, message, customer_id=None, context_order_id=None):
+            del customer_id, context_order_id
+            self.calls += 1
+            if self.calls == 1:
+                return OrchestratedChatResult(
+                    answer="Order ORD-1001 is currently processing.",
+                    route=ChatRoute.ORDER,
+                    sources=[],
+                    actions=[],
+                )
+            return OrchestratedChatResult(
+                answer="I can’t resolve this issue without human support.",
+                route=ChatRoute.POLICY,
+                sources=[],
+                actions=[],
+                needs_human_support=True,
+            )
+
+    monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
+    token = issue_authorization_token("CUS-DEMO-001")
+    conversation_id = "demo-escalated-context"
+
+    first_response = client.post(
+        "/api/chat",
+        json={
+            "message": "Where is order ORD-1001?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+    escalation_response = client.post(
+        "/api/chat",
+        json={
+            "message": "Please escalate this delivery issue.",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+
+    assert first_response.status_code == 200
+    assert escalation_response.status_code == 200
+    ticket_id = next(
+        action["ticket_id"]
+        for action in escalation_response.json()["actions"]
+        if action["type"] == "support_ticket"
+    )
+    ticket_records = json.loads(
+        (tmp_path / "support_tickets.json").read_text(encoding="utf-8")
+    )
+    ticket = next(record for record in ticket_records if record["ticket_id"] == ticket_id)
+
+    assert ticket["order_id"] == "ORD-1001"
+    assert ticket["issue_summary"] == "Please escalate this delivery issue."
+    assert [turn["role"] for turn in ticket["conversation_context"]] == [
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+    ]
+    assert "Where is order ORD-1001?" in ticket["conversation_context"][0]["text"]
+    assert ticket["status"] == "open"
+
+
+def test_chat_uses_history_to_resolve_other_order_follow_up(monkeypatch) -> None:
+    calls = []
+
+    class FakeOrchestrator:
+        def handle(self, message, customer_id=None, context_order_id=None):
+            calls.append((message, customer_id, context_order_id))
+            order_id = "ORD-1001" if len(calls) == 1 else "ORD-1002"
+            return OrchestratedChatResult(
+                answer=f"Order {order_id} is currently processing.",
+                route=ChatRoute.ORDER,
+                sources=[],
+                actions=[],
+            )
+
+    monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
+    token = issue_authorization_token("CUS-DEMO-001")
+    conversation_id = "demo-other-order-follow-up"
+
+    first = client.post(
+        "/api/chat",
+        json={
+            "message": "Where is order ORD-1001?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+    follow_up = client.post(
+        "/api/chat",
+        json={
+            "message": "What about the other one?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+
+    assert first.status_code == follow_up.status_code == 200
+    assert calls == [
+        ("Where is order ORD-1001?", "CUS-DEMO-001", None),
+        ("order status for the other order", "CUS-DEMO-001", "ORD-1001"),
+    ]
+    assert follow_up.json()["memory"]["short_term_used"] is True
+
+
+def test_chat_uses_ord_1042_from_memory_for_live_delivery_follow_up(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    import app.agent.tools as agent_tools
+
+    repository = agent_tools.JsonRepository(tmp_path)
+    (tmp_path / "orders.json").write_text(
+        json.dumps(
+            [
+                {
+                    "order_id": "ORD-1042",
+                    "customer_id": "CUS-DEMO-001",
+                    "items": [{"product_id": "PROD-001", "quantity": 1}],
+                    "order_status": "shipped",
+                    "currency": "ZAR",
+                    "created_at": "2026-10-20T10:15:00Z",
+                    "updated_at": "2026-10-23T05:38:21Z",
+                    "cancellation_allowed": False,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "deliveries.json").write_text(
+        json.dumps(
+            [
+                {
+                    "shipment_id": "SHIP-1042",
+                    "order_id": "ORD-1042",
+                    "carrier": "Demo Carrier",
+                    "tracking_reference": "TRACK-1042",
+                    "delivery_status": "in_transit",
+                    "estimated_delivery": "2026-10-30T18:00:00Z",
+                    "last_update": "2026-10-29T08:00:00Z",
+                    "delay_reason": None,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(agent_tools, "repository", repository)
+    monkeypatch.setattr(
+        chat_api,
+        "orchestrator",
+        build_default_orchestrator(),
+    )
+    token = issue_authorization_token("CUS-DEMO-001")
+    conversation_id = "demo-ord-1042-memory"
+    first = client.post(
+        "/api/chat",
+        json={
+            "message": "My order number is ORD-1042.",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+    follow_up = client.post(
+        "/api/chat",
+        json={
+            "message": "Is it out for delivery yet?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+
+    assert first.status_code == follow_up.status_code == 200
+    assert first.json()["answer"] == "Order ORD-1042 is currently shipped."
+    assert "ORD-1042" in follow_up.json()["answer"]
+    assert "SHIP-1042 is in_transit" in follow_up.json()["answer"]
+    assert follow_up.json()["memory"]["short_term_used"] is True
+
+
+def test_cancel_follow_up_asks_when_recent_context_has_multiple_orders(
+    monkeypatch,
+) -> None:
+    calls = []
+
+    class FakeOrchestrator:
+        def handle(self, message, customer_id=None, context_order_id=None):
+            calls.append((message, customer_id, context_order_id))
+            return OrchestratedChatResult(
+                answer=(
+                    "Which order would you like to cancel? Please provide its "
+                    "order reference."
+                ),
+                route=ChatRoute.CLARIFICATION,
+                sources=[],
+                actions=[],
+            )
+
+    monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
+    token = issue_authorization_token("CUS-DEMO-001")
+    conversation_id = "demo-ambiguous-cancellation-context"
+    chat_api.conversation_memory_service.record_turns(
+        conversation_id,
+        "CUS-DEMO-001",
+        "Compare orders ORD-1001 and ORD-1002.",
+        "I can see orders ORD-1001 and ORD-1002.",
+        "ORD-1002",
+        None,
+    )
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "Can you cancel it?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+
+    assert response.status_code == 200
+    assert calls == [("Can you cancel it?", "CUS-DEMO-001", None)]
+    assert "Which order" in response.json()["answer"]
+
+
+def test_chat_recalls_previous_interaction_from_saved_memory(monkeypatch) -> None:
+    calls = 0
+
+    class FakeOrchestrator:
+        def handle(self, message, customer_id=None, context_order_id=None):
+            del message, customer_id, context_order_id
+            nonlocal calls
+            calls += 1
+            return OrchestratedChatResult(
+                answer=(
+                    "Your order ORD-1001 is currently processing."
+                    if calls == 1
+                    else "I cannot recall earlier interactions."
+                ),
+                route=ChatRoute.ORDER if calls == 1 else ChatRoute.OUT_OF_SCOPE,
+                sources=[],
+                actions=[],
+            )
+
+    monkeypatch.setattr(chat_api, "orchestrator", FakeOrchestrator())
+    token = issue_authorization_token("CUS-DEMO-001")
+    conversation_id = "demo-conversation-recall"
+
+    first = client.post(
+        "/api/chat",
+        json={
+            "message": "Where is order ORD-1001?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+    recall = client.post(
+        "/api/chat",
+        json={
+            "message": "Do you remember what we talked about earlier?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+
+    assert first.status_code == recall.status_code == 200
+    assert calls == 1
+    assert recall.json()["route"] == "conversation_memory"
+    assert "Where is order ORD-1001?" in recall.json()["answer"]
+    assert "Your order ORD-1001 is currently processing." in recall.json()["answer"]
+    assert recall.json()["memory"]["short_term_used"] is True
+
+
+def test_chat_is_honest_when_recall_has_no_saved_history() -> None:
+    token = issue_authorization_token("CUS-DEMO-001")
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "Do you remember what we discussed earlier?",
+            "conversation_id": "demo-empty-conversation",
+            "authorization_token": token,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["route"] == "conversation_memory"
+    assert "don’t have earlier messages available" in response.json()["answer"]
+    assert response.json()["memory"]["short_term_used"] is False
+
+
 def test_escalation_requires_authentication(monkeypatch) -> None:
     class FakeOrchestrator:
         def handle(self, message, customer_id=None, context_order_id=None):
@@ -159,6 +460,166 @@ def test_escalation_requires_authentication(monkeypatch) -> None:
     response = client.post("/api/chat", json={"message": "Please escalate this."})
 
     assert response.status_code == 401
+
+
+def test_support_agent_login_and_ticket_status_lifecycle(
+    monkeypatch,
+) -> None:
+    from app.api import authorization as authorization_api
+    from app.services.demo_authorization import DemoAuthorizationService
+
+    repository = chat_api.support_repository
+    shutil.copyfile(
+        Path(__file__).resolve().parents[1] / "data" / "orders.json",
+        repository.data_directory / "orders.json",
+    )
+    service = DemoAuthorizationService(repository)
+    service.create_account(
+        "customer@example.test",
+        "customer-password-123",
+        "CUS-DEMO-001",
+    )
+    service.create_support_agent_account(
+        "agent@example.test",
+        "support-agent-password-123",
+        "STAFF-001",
+    )
+    customer_token, _ = service.authenticate(
+        "customer@example.test",
+        "customer-password-123",
+    )
+    monkeypatch.setattr(authorization_api, "demo_authorization_service", service)
+    monkeypatch.setattr(chat_api, "demo_authorization_service", service)
+    initial_ticket = SupportTicket(
+        ticket_id="SUP-STAFF-001",
+        conversation_id="staff-lifecycle-test",
+        customer_message="My delivery is late.",
+        customer_id="CUS-DEMO-001",
+        order_id="ORD-1001",
+        issue_summary="Late delivery",
+        created_at=datetime.now(timezone.utc),
+    )
+    repository.append_support_ticket(initial_ticket)
+    login_response = client.post(
+        "/api/auth/support-agent/login",
+        json={
+            "email": "AGENT@example.test",
+            "password": "support-agent-password-123",
+        },
+    )
+    assert login_response.status_code == 200
+    staff_token = login_response.json()["authorization_token"]
+
+    customer_status_before_update = client.get(
+        "/api/support/tickets/SUP-STAFF-001/status",
+        headers={"Authorization": f"Bearer {customer_token}"},
+    )
+    staff_customer_status = client.get(
+        "/api/support/tickets/SUP-STAFF-001/status",
+        headers={"Authorization": f"Bearer {staff_token}"},
+    )
+    customer_details = client.get(
+        "/api/support/tickets/SUP-STAFF-001",
+        headers={"Authorization": f"Bearer {customer_token}"},
+    )
+    staff_details = client.get(
+        "/api/support/tickets/SUP-STAFF-001",
+        headers={"Authorization": f"Bearer {staff_token}"},
+    )
+    missing_auth = client.patch(
+        "/api/support/tickets/SUP-STAFF-001/status",
+        json={"status": "investigating", "note": "Starting review."},
+    )
+    customer_auth = client.patch(
+        "/api/support/tickets/SUP-STAFF-001/status",
+        headers={"Authorization": f"Bearer {customer_token}"},
+        json={"status": "investigating", "note": "Customer must not update this."},
+    )
+    investigating = client.patch(
+        "/api/support/tickets/SUP-STAFF-001/status",
+        headers={"Authorization": f"Bearer {staff_token}"},
+        json={"status": "investigating", "note": "Checking carrier updates."},
+    )
+    missing_customer_update = client.patch(
+        "/api/support/tickets/SUP-STAFF-001/status",
+        headers={"Authorization": f"Bearer {staff_token}"},
+        json={"status": "resolved", "note": "Carrier confirmed delivery."},
+    )
+    resolved = client.patch(
+        "/api/support/tickets/SUP-STAFF-001/status",
+        headers={"Authorization": f"Bearer {staff_token}"},
+        json={
+            "status": "resolved",
+            "note": "Carrier confirmed delivery; customer@example.test was notified.",
+            "customer_message": "The carrier confirmed delivery. Reply here if the parcel is still missing.",
+        },
+    )
+    unchanged = client.patch(
+        "/api/support/tickets/SUP-STAFF-001/status",
+        headers={"Authorization": f"Bearer {staff_token}"},
+        json={
+            "status": "resolved",
+            "note": "No additional change.",
+        },
+    )
+    invalid_transition = client.patch(
+        "/api/support/tickets/SUP-STAFF-001/status",
+        headers={"Authorization": f"Bearer {staff_token}"},
+        json={"status": "investigating", "note": "Reopen review."},
+    )
+
+    assert missing_auth.status_code == 401
+    assert customer_auth.status_code == 401
+    assert customer_status_before_update.status_code == 200
+    assert customer_status_before_update.json() == {
+        "ticket_id": "SUP-STAFF-001",
+        "status": "open",
+        "customer_message": None,
+    }
+    assert staff_customer_status.status_code == 401
+    assert customer_details.status_code == 401
+    assert staff_details.status_code == 200
+    assert staff_details.json()["order_id"] == "ORD-1001"
+    assert staff_details.json()["issue_summary"] == "Late delivery"
+    assert investigating.status_code == 200
+    assert investigating.json()["status"] == "investigating"
+    assert investigating.json()["changed"] is True
+    assert missing_customer_update.status_code == 409
+    assert resolved.status_code == 200
+    assert resolved.json()["status"] == "resolved"
+    assert resolved.json()["changed"] is True
+    customer_status_after_update = client.get(
+        "/api/support/tickets/SUP-STAFF-001/status",
+        headers={"Authorization": f"Bearer {customer_token}"},
+    )
+    assert customer_status_after_update.status_code == 200
+    assert customer_status_after_update.json() == {
+        "ticket_id": "SUP-STAFF-001",
+        "status": "resolved",
+        "customer_message": (
+            "The carrier confirmed delivery. Reply here if the parcel is still missing."
+        ),
+    }
+    assert unchanged.status_code == 200
+    assert unchanged.json()["changed"] is False
+    assert invalid_transition.status_code == 409
+    updated_ticket = repository.get_support_ticket("SUP-STAFF-001")
+    assert updated_ticket is not None
+    assert updated_ticket.status == "resolved"
+    assert updated_ticket.customer_update is not None
+    assert updated_ticket.customer_update.message == (
+        "The carrier confirmed delivery. Reply here if the parcel is still missing."
+    )
+    assert [change.status for change in updated_ticket.status_history] == [
+        "investigating",
+        "resolved",
+    ]
+    assert updated_ticket.status_history[-1].changed_by == "STAFF-001"
+    assert updated_ticket.status_history[-1].note == (
+        "Carrier confirmed delivery; [redacted] was notified."
+    )
+    with pytest.raises(SupportTicketConflictError):
+        repository.update_support_ticket(initial_ticket, expected_status="open")
 
 
 def test_explicit_contact_support_request_creates_ticket_even_without_model_flag(
@@ -188,6 +649,8 @@ def test_explicit_contact_support_request_creates_ticket_even_without_model_flag
     assert response.status_code == 200
     data = response.json()
     assert data["needs_human_support"] is True
+    assert "send your details using the support form below" in data["answer"]
+    assert "creating the ticket alone does not notify them" in data["answer"]
     ticket_action = next(
         action for action in data["actions"] if action["type"] == "support_ticket"
     )
@@ -392,6 +855,7 @@ def test_chat_resolves_demo_token_before_passing_customer_to_orchestrator(monkey
     [
         "My order ORD-1001 was cancelled but I was charged and want my money back.",
         "I ordered something last week, it has not arrived. I don't remember the order number.",
+        "Where is order ORD-1001, and what are the delivery and payment statuses?",
     ],
 )
 def test_private_issue_lookups_require_demo_verification(message: str) -> None:
@@ -510,6 +974,34 @@ def test_chat_runs_order_lookup_through_default_tool_orchestrator(monkeypatch) -
     assert response.json()["answer"].startswith("Order ORD-1001 is currently ")
     assert response.json()["sources"] == []
     assert response.json()["needs_confirmation"] is False
+
+
+def test_chat_logs_non_sensitive_execution_summary(caplog) -> None:
+    caplog.set_level("INFO", logger="app.api.chat")
+    token = issue_authorization_token("CUS-DEMO-001")
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "Where is order ORD-1001?",
+            "authorization_token": token,
+        },
+    )
+
+    assert response.status_code == 200
+    record = next(
+        record
+        for record in caplog.records
+        if record.name == "app.api.chat"
+        and record.getMessage() == "chat_request_completed"
+    )
+    assert record.route == "order_tool"
+    assert record.duration_ms >= 0
+    assert record.tool_calls == [
+        {"name": "get_order_status", "result_status": "success"}
+    ]
+    assert "ORD-1001" not in record.message
+    assert "ORD-1001" not in record.__dict__.get("tool_calls", []).__str__()
 
 
 def test_chat_uses_owner_scoped_memory_for_delivery_follow_up(monkeypatch, tmp_path) -> None:
