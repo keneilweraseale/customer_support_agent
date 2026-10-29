@@ -6,7 +6,7 @@ export default function ChatHeader({
   onDamageReport,
 }) {
   return (
-    <header style={styles.header}>
+    <header className="chat-header" style={styles.header}>
       <div style={styles.brand}>
         <div aria-hidden="true" style={styles.icon}>
           <span>✦</span>
@@ -18,6 +18,17 @@ export default function ChatHeader({
       </div>
       {authenticated && (
         <div className="header-actions" style={styles.actions}>
+          <button
+            aria-label="Report a damaged item"
+            className="header-action damage-report-action"
+            disabled={disabled}
+            onClick={onDamageReport}
+            style={styles.damageReport}
+            type="button"
+          >
+            <span aria-hidden="true">▣</span>
+            <span>Report damaged item</span>
+          </button>
           <button className="header-action" disabled={disabled} onClick={onNewChat} style={styles.newChat} type="button">
             <span aria-hidden="true">＋</span><span className="new-chat-label"> New chat</span>
           </button>
@@ -40,6 +51,21 @@ const styles = {
     padding: "19px 28px",
   },
   actions: { alignItems: "center", display: "flex", gap: 10 },
+  damageReport: {
+    alignItems: "center",
+    background: "linear-gradient(135deg, var(--color-primary), var(--color-primary-dark))",
+    border: 0,
+    borderRadius: 11,
+    color: "#FFFFFF",
+    cursor: "pointer",
+    display: "flex",
+    font: "inherit",
+    fontSize: 12,
+    fontWeight: 700,
+    gap: 7,
+    padding: "10px 13px",
+    whiteSpace: "nowrap",
+  },
   brand: { alignItems: "center", display: "flex", gap: 13, minWidth: 0 },
   icon: {
     alignItems: "center",
