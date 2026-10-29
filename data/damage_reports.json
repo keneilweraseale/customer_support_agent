@@ -28,5 +28,25 @@
     "description": "Tshiamo's eyes",
     "image_filename": "260d9875-2141-4d07-8a93-6521bf6bc5db.jpg",
     "created_at": "2026-10-29T12:05:52.201395Z"
+  },
+  {
+    "report_id": "e5cfb34f-2f50-41e8-b368-884a46a4e9f6",
+    "idempotency_key": "e7b76273-062c-46c1-a568-720a0c1fd1e7",
+    "request_fingerprint": "084ed8cb91a2047062d8453f7215844ca3a07d03665809b18a9f1c2d9e157828",
+    "customer_id": "CUS-DEMO-001",
+    "order_id": "ORD-1001",
+    "description": "This good is damaged",
+    "image_filename": "e5cfb34f-2f50-41e8-b368-884a46a4e9f6.jpg",
+    "created_at": "2026-10-29T22:14:49.088104Z"
+  },
+  {
+    "report_id": "6f5528ab-2302-4794-b136-65ad3b7a1471",
+    "idempotency_key": "d88ee1c4-658e-4106-949e-b02c17f2a3aa",
+    "request_fingerprint": "d24d9876f81112c63c39178ad18ed4aa3db3a4f821b782c0fd765c3fc8cdf6d6",
+    "customer_id": "CUS-DEMO-001",
+    "order_id": "ORD-1001",
+    "description": "This good is damaged.",
+    "image_filename": "6f5528ab-2302-4794-b136-65ad3b7a1471.jpg",
+    "created_at": "2026-10-29T22:16:48.064217Z"
   }
 ]

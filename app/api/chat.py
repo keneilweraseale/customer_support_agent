@@ -52,7 +52,13 @@ from app.services.support_tickets import (
 )
 from app.agent.tools import repository as support_repository
 from app.storage.json_store import ConversationOwnershipError, DataStoreError
-from app.storage.models import ConversationTurn, SupportTicket
+from app.storage.models import (
+    ConversationTurn,
+    SupportTicket,
+    SupportTicketCustomerUpdate,
+    SupportTicketStatus,
+    SupportTicketStatusChange,
+)
 
 router = APIRouter(prefix="/api", tags=["chat"])
 logger = logging.getLogger(__name__)
