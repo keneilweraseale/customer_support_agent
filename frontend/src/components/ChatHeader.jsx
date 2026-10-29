@@ -1,97 +1,130 @@
-export default function ChatHeader({
-  authenticated,
-  disabled,
-  onLogout,
-  onNewChat,
-  onDamageReport,
-}) {
+function NavigationIcon({ name }) {
+  const sharedProps = {
+    "aria-hidden": "true",
+    fill: "none",
+    height: 20,
+    stroke: "currentColor",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    strokeWidth: 1.7,
+    viewBox: "0 0 24 24",
+    width: 20,
+  };
+
+  if (name === "report") {
+    return (
+      <svg {...sharedProps}>
+        <path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z" />
+        <path d="m4.5 7.8 7.5 4.3 7.5-4.3M12 12v8.5M12 7v2.5" />
+      </svg>
+    );
+  }
+
+  if (name === "new-chat") {
+    return (
+      <svg {...sharedProps}>
+        <path d="M12 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3" />
+        <path d="M8 9h6M8 13h3M19 14v7M15.5 17.5h7" />
+      </svg>
+    );
+  }
+
+  if (name === "sign-out") {
+    return (
+      <svg {...sharedProps}>
+        <path d="M10 17l5-5-5-5M15 12H3" />
+        <path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" />
+      </svg>
+    );
+  }
+
   return (
-    <header className="chat-header" style={styles.header}>
-      <div style={styles.brand}>
-        <div aria-hidden="true" style={styles.icon}>
-          <span>✦</span>
-        </div>
-        <div>
-          <h1 style={styles.title}>Customer Support</h1>
-          <p className="brand-subtitle" style={styles.subtitle}>Here to help with your order and more</p>
-        </div>
-      </div>
-      {authenticated && (
-        <div className="header-actions" style={styles.actions}>
-          <button
-            aria-label="Report a damaged item"
-            className="header-action damage-report-action"
-            disabled={disabled}
-            onClick={onDamageReport}
-            style={styles.damageReport}
-            type="button"
-          >
-            <span aria-hidden="true">▣</span>
-            <span>Report damaged item</span>
-          </button>
-          <button className="header-action" disabled={disabled} onClick={onNewChat} style={styles.newChat} type="button">
-            <span aria-hidden="true">＋</span><span className="new-chat-label"> New chat</span>
-          </button>
-          <button className="header-action" disabled={disabled} onClick={onLogout} style={styles.newChat} type="button">
-            Sign out
-          </button>
-        </div>
-      )}
-    </header>
+    <svg {...sharedProps}>
+      <path d="M4 10.5a8 8 0 0 1 16 0c0 4.5-3.6 8.5-8 8.5a8.6 8.6 0 0 1-3.2-.6L4 20l1.5-4.2A9.2 9.2 0 0 1 4 10.5Z" />
+      <path d="M8.5 11h.01M12 11h.01M15.5 11h.01" strokeWidth="2.5" />
+    </svg>
   );
 }
 
-const styles = {
-  header: {
-    alignItems: "center",
-    background: "rgba(255,255,255,0.82)",
-    borderBottom: "1px solid #e8efef",
-    display: "flex",
-    justifyContent: "space-between",
-    padding: "19px 28px",
-  },
-  actions: { alignItems: "center", display: "flex", gap: 10 },
-  damageReport: {
-    alignItems: "center",
-    background: "linear-gradient(135deg, var(--color-primary), var(--color-primary-dark))",
-    border: 0,
-    borderRadius: 11,
-    color: "#FFFFFF",
-    cursor: "pointer",
-    display: "flex",
-    font: "inherit",
-    fontSize: 12,
-    fontWeight: 700,
-    gap: 7,
-    padding: "10px 13px",
-    whiteSpace: "nowrap",
-  },
-  brand: { alignItems: "center", display: "flex", gap: 13, minWidth: 0 },
-  icon: {
-    alignItems: "center",
-    background: "linear-gradient(145deg, #1ba291, var(--color-primary-dark))",
-    borderRadius: 15,
-    color: "#FFFFFF",
-    display: "flex",
-    fontSize: 20,
-    fontWeight: 700,
-    height: 46,
-    justifyContent: "center",
-    boxShadow: "0 6px 15px rgba(22, 139, 126, .18)",
-    width: 46,
-    flex: "0 0 46px",
-  },
-  title: {   color: "var(--color-ink)", fontSize: 16, letterSpacing: "-0.025em", margin: 0 },
-  subtitle: { color: "#829295", fontSize: 12, margin: "4px 0 0" },
-  newChat: {
-    background: "var(--color-surface)",
-    border: "1px solid var(--color-border)",
-    borderRadius: 11,
-    color: "#476164",
-    cursor: "pointer",
-    font: "inherit",
-    fontSize: 12,
-    fontWeight: 600,
-    padding: "10px 13px",
-  },
-};
+export default function ChatHeader({
+  authenticated,
+  disabled,
+  isDamageReportOpen,
+  onLogout,
+  onNewChat,
+  onDamageReport,
+  onClose,
+  open,
+}) {
+  return (
+    <aside className={`sidebar${open ? " sidebar-open" : ""}`} id="primary-sidebar">
+      <div className="sidebar-inner">
+        <div className="sidebar-brand">
+          <span className="sidebar-brand-icon">
+            <NavigationIcon name="brand" />
+          </span>
+          <span className="sidebar-brand-copy">
+            <strong>Customer Support</strong>
+            <span>Here to help, every step</span>
+          </span>
+        </div>
+
+        <div className="sidebar-section-label">WORKSPACE</div>
+        {authenticated ? (
+          <nav aria-label="Main navigation" className="sidebar-navigation">
+            <button
+              aria-current={isDamageReportOpen ? "page" : undefined}
+              className={`sidebar-action${isDamageReportOpen ? " sidebar-action-active" : ""}`}
+              disabled={disabled}
+              onClick={() => {
+                onDamageReport();
+                onClose();
+              }}
+              type="button"
+            >
+              <NavigationIcon name="report" />
+              <span>Report damaged item</span>
+            </button>
+            <button
+              className={`sidebar-action${!isDamageReportOpen ? " sidebar-action-active" : ""}`}
+              disabled={disabled}
+              onClick={() => {
+                onNewChat();
+                onClose();
+              }}
+              type="button"
+            >
+              <NavigationIcon name="new-chat" />
+              <span>New chat</span>
+            </button>
+          </nav>
+        ) : (
+          <p className="sidebar-description">
+            Secure, personalized help for your orders and deliveries.
+          </p>
+        )}
+
+        <div className="sidebar-bottom">
+          {authenticated ? (
+            <button
+              className="sidebar-action sidebar-sign-out"
+              onClick={() => {
+                onLogout();
+                onClose();
+              }}
+              type="button"
+            >
+              <NavigationIcon name="sign-out" />
+              <span>Sign out</span>
+            </button>
+          ) : (
+            <div className="sidebar-secure-note">
+              <span aria-hidden="true" className="sidebar-secure-dot" />
+              Your support session is secure
+            </div>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}

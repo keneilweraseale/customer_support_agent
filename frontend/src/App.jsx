@@ -58,6 +58,7 @@ export default function App() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isDamageReportOpen, setIsDamageReportOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   async function signIn(event) {
     event.preventDefault();
@@ -163,6 +164,7 @@ export default function App() {
     setMessages([welcomeMessage]);
     setDraft("");
     setLoginMessage("");
+    setIsDamageReportOpen(false);
   }
 
   function signOut() {
@@ -173,6 +175,8 @@ export default function App() {
     setDraft("");
     setLoginMessage("");
     setConversationId(createConversationId());
+    setIsDamageReportOpen(false);
+    setIsSidebarOpen(false);
   }
 
   async function confirmCancellation(
@@ -310,20 +314,86 @@ export default function App() {
   }
 
   return (
-    <>
-      <main style={styles.page}>
-        <section
-          aria-label="Customer support chat"
-          className={authorizationToken ? "chat-panel authenticated-panel" : "chat-panel sign-in-panel"}
-          style={styles.panel}
-        >
+    <div className={`app-shell${authorizationToken ? "" : " app-shell-public"}`}>
+      {authorizationToken && (
+        <>
           <ChatHeader
-            authenticated={Boolean(authorizationToken)}
+            authenticated
             disabled={isLoading}
+            isDamageReportOpen={isDamageReportOpen}
             onDamageReport={() => setIsDamageReportOpen(true)}
             onLogout={signOut}
             onNewChat={startNewChat}
+            onClose={() => setIsSidebarOpen(false)}
+            open={isSidebarOpen}
           />
+          {isSidebarOpen && (
+            <button
+              aria-label="Close navigation"
+              className="sidebar-backdrop"
+              onClick={() => setIsSidebarOpen(false)}
+              type="button"
+            />
+          )}
+        </>
+      )}
+      <main className={`workspace${authorizationToken ? "" : " workspace-public"}`}>
+        {authorizationToken && (
+          <header className="workspace-header">
+            <div className="workspace-heading">
+              <button
+                aria-controls="primary-sidebar"
+                aria-expanded={isSidebarOpen}
+                aria-label={isSidebarOpen ? "Close navigation" : "Open navigation"}
+                className="mobile-menu-toggle"
+                onClick={() => setIsSidebarOpen((open) => !open)}
+                type="button"
+              >
+                <svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="21"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeWidth="1.8"
+                  viewBox="0 0 24 24"
+                  width="21"
+                >
+                  {isSidebarOpen ? <path d="m6 6 12 12M18 6 6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+                </svg>
+              </button>
+              <div>
+                <p className="workspace-eyebrow">SUPPORT WORKSPACE</p>
+                <h1 className="workspace-title">
+                  {isDamageReportOpen ? "Damage report" : "Customer support"}
+                </h1>
+                <p className="workspace-subtitle">
+                  {isDamageReportOpen
+                    ? "Tell us what happened and our team will review it."
+                    : "Chat with us about orders, delivery, and more."}
+                </p>
+              </div>
+            </div>
+            <div className="availability-indicator">
+              <span aria-hidden="true" />
+              Secure support
+            </div>
+          </header>
+        )}
+        <section
+          aria-label={
+            isDamageReportOpen
+              ? "Report a damaged item"
+              : authorizationToken
+                ? "Customer support chat"
+                : "Sign in to customer support"
+          }
+          className={authorizationToken ? "chat-panel authenticated-panel" : "chat-panel sign-in-panel"}
+          style={{
+            ...styles.panel,
+            ...(!authorizationToken ? styles.publicPanel : {}),
+          }}
+        >
           {!authorizationToken ? (
             <form className="login-form" onSubmit={signIn} style={styles.loginForm}>
               <div aria-hidden="true" style={styles.loginIllustration}>
@@ -421,36 +491,30 @@ export default function App() {
           )}
         </section>
       </main>
-    </>
+    </div>
   );
 }
 
 const styles = {
-  page: {
-    alignItems: "center",
-    background: "radial-gradient(ellipse at 50% 0%, var(--color-primary-soft) 0%, #f3f7f7 42%, var(--color-page) 100%)",
-    boxSizing: "border-box",
-    display: "flex",
-    fontFamily: "inherit",
-    justifyContent: "center",
-    minHeight: "100vh",
-    padding: "32px 24px",
-  },
   panel: {
-    background: "#fbfdfd",
-    border: "1px solid rgba(222, 233, 232, 0.9)",
-    borderRadius: "var(--radius-card)",
-    boxShadow: "var(--shadow-card)",
+    background: "var(--color-surface)",
+    border: 0,
+    borderRadius: 0,
+    boxShadow: "none",
     display: "flex",
+    flex: "1 1 auto",
     flexDirection: "column",
-    height: "min(860px, calc(100vh - 64px))",
-    maxWidth: 1040,
     overflow: "hidden",
+    minHeight: 0,
     width: "100%",
   },
+  publicPanel: {
+    height: "100dvh",
+    minHeight: "100dvh",
+  },
   footer: {
-    background: "rgba(255,255,255,0.84)",
-    borderTop: "1px solid #e8efef",
+    background: "var(--color-surface)",
+    borderTop: "1px solid var(--color-border)",
     padding: "18px 28px 16px",
   },
   loginForm: {
@@ -459,7 +523,8 @@ const styles = {
     flex: "1 1 auto",
     flexDirection: "column",
     justifyContent: "center",
-    maxWidth: 440,
+    maxWidth: 460,
+    minHeight: 0,
     padding: "36px 32px 42px",
     width: "100%",
   },
@@ -478,7 +543,7 @@ const styles = {
     width: 66,
   },
   loginEyebrow: {
-    color: "#168275",
+    color: "var(--color-primary)",
     fontSize: 11,
     fontWeight: 800,
     letterSpacing: "0.14em",
