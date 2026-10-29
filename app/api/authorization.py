@@ -60,3 +60,24 @@ async def login(request: LoginRequest) -> LoginResponse:
         ) from exc
 
     return LoginResponse(authorization_token=token, expires_at=expires_at)
+
+
+@router.post("/support-agent/login", response_model=LoginResponse)
+async def support_agent_login(request: LoginRequest) -> LoginResponse:
+    try:
+        token, expires_at = demo_authorization_service.authenticate_support_agent(
+            request.email,
+            request.password,
+        )
+    except DemoAuthorizationError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password.",
+        ) from exc
+    except DataStoreError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Support-agent login is temporarily unavailable.",
+        ) from exc
+
+    return LoginResponse(authorization_token=token, expires_at=expires_at)

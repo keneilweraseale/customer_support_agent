@@ -3,8 +3,38 @@ from pathlib import Path
 
 import pytest
 
-from app.services.conversation_memory import ConversationMemoryService
+from app.services.conversation_memory import (
+    ConversationMemoryService,
+    is_conversation_recall_request,
+    unambiguous_order_context,
+)
 from app.storage.json_store import ConversationOwnershipError, JsonRepository
+
+
+def test_conversation_recall_detection_does_not_confuse_missing_order_reference() -> None:
+    assert is_conversation_recall_request(
+        "Do you remember what we talked about earlier?"
+    )
+    assert not is_conversation_recall_request(
+        "I don't remember my order number."
+    )
+
+
+def test_order_context_is_rejected_when_recent_exchange_mentions_multiple_orders(
+    tmp_path: Path,
+) -> None:
+    repository = JsonRepository(tmp_path)
+    service = ConversationMemoryService(repository)
+    memory = service.record_turns(
+        "demo-ambiguous-orders",
+        "CUS-DEMO-001",
+        "Compare ORD-1001 and ORD-1002.",
+        "I found ORD-1001 and ORD-1002.",
+        "ORD-1002",
+        None,
+    )
+
+    assert unambiguous_order_context(memory.turns, memory.last_order_id) is None
 
 
 def test_conversation_memory_is_bounded_and_redacts_sensitive_values(

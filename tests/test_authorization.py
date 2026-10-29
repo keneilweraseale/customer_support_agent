@@ -87,6 +87,62 @@ def test_login_uses_case_insensitive_email_and_stored_password_hash(
     ).read_text(encoding="utf-8")
 
 
+def test_support_agent_login_issues_a_distinct_role_scoped_token(
+    repository: JsonRepository,
+) -> None:
+    service = DemoAuthorizationService(repository)
+    service.create_account(
+        "customer@example.com",
+        "local-demo-password-123",
+        "CUS-DEMO-001",
+    )
+    service.create_support_agent_account(
+        "agent@example.com",
+        "support-agent-password-123",
+        "STAFF-001",
+    )
+
+    customer_token, _ = service.authenticate(
+        "customer@example.com",
+        "local-demo-password-123",
+    )
+    staff_token, _ = service.authenticate_support_agent(
+        "AGENT@example.com",
+        "support-agent-password-123",
+    )
+
+    assert service.resolve_customer(customer_token) == "CUS-DEMO-001"
+    assert service.resolve_support_agent(customer_token) is None
+    assert service.resolve_support_agent(staff_token) == "STAFF-001"
+    assert service.resolve_customer(staff_token) is None
+    stored_agent = repository.get_support_agent_accounts()[0]
+    assert stored_agent.role == "support_agent"
+    assert stored_agent.password_hash.startswith("scrypt$")
+    assert "support-agent-password-123" not in stored_agent.password_hash
+
+
+def test_support_agent_authentication_rejects_unknown_account_and_password(
+    repository: JsonRepository,
+) -> None:
+    service = DemoAuthorizationService(repository)
+    service.create_support_agent_account(
+        "agent@example.com",
+        "support-agent-password-123",
+        "STAFF-001",
+    )
+
+    with pytest.raises(DemoAuthorizationError, match="Invalid email or password"):
+        service.authenticate_support_agent(
+            "agent@example.com",
+            "incorrect-password",
+        )
+    with pytest.raises(DemoAuthorizationError, match="Invalid email or password"):
+        service.authenticate_support_agent(
+            "unknown@example.com",
+            "incorrect-password",
+        )
+
+
 @pytest.mark.parametrize(
     ("email", "password"),
     [

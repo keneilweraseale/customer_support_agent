@@ -6,3 +6,4 @@ node_modules/
 dist/
 *.py[cod]
 data/customer_accounts.json
+data/support_agents.json
