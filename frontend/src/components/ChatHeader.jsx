@@ -1,4 +1,10 @@
-export default function ChatHeader({ authenticated, disabled, onLogout, onNewChat }) {
+export default function ChatHeader({
+  authenticated,
+  disabled,
+  onLogout,
+  onNewChat,
+  onDamageReport,
+}) {
   return (
     <header style={styles.header}>
       <div style={styles.brand}>
@@ -10,6 +16,9 @@ export default function ChatHeader({ authenticated, disabled, onLogout, onNewCha
       </div>
       {authenticated && (
         <div style={styles.actions}>
+          <button disabled={disabled} onClick={onDamageReport} style={styles.newChat} type="button">
+            Report damaged item
+          </button>
           <button disabled={disabled} onClick={onNewChat} style={styles.newChat} type="button">
             <span aria-hidden="true">＋</span> New chat
           </button>

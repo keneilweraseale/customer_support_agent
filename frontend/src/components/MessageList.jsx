@@ -186,6 +186,7 @@ const quickActions = [
   "Returns & refunds",
   "Product availability",
   "Contact support",
+  "Report Damaged Item",
 ];
 
 const styles = {
