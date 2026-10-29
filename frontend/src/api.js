@@ -93,6 +93,34 @@ export async function recordCancellationDecision({
   return data;
 }
 
+export async function submitDamageReport({
+  authorizationToken,
+  orderId,
+  imageData,
+  description,
+  idempotencyKey,
+}) {
+  const data = await postJson(
+    "/api/damage-reports",
+    {
+      authorization_token: authorizationToken,
+      order_id: orderId,
+      image_data: imageData,
+      description: description || null,
+    },
+    { "Idempotency-Key": idempotencyKey },
+  );
+  if (
+    typeof data.report_id !== "string" ||
+    data.order_id !== orderId ||
+    typeof data.created !== "boolean" ||
+    typeof data.message !== "string"
+  ) {
+    throw new Error("We could not confirm that your damage report was received.");
+  }
+  return data;
+}
+
 async function postJson(url, body, additionalHeaders = {}) {
   let response;
   const controller = new AbortController();

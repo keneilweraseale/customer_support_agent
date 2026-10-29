@@ -12,6 +12,7 @@ from app.storage.models import (
     CancellationEvent,
     ConversationMemory,
     CustomerAccount,
+    DamageReport,
     Delivery,
     Order,
     Payment,
