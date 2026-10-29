@@ -226,8 +226,7 @@ select:focus {
   padding: 9px 10px;
 }
 
-.sidebar-secure-dot,
-.availability-indicator > span {
+.sidebar-secure-dot {
   background: #22c55e;
   border-radius: 50%;
   flex: 0 0 7px;
@@ -247,64 +246,6 @@ select:focus {
   width: 100%;
 }
 
-.workspace-header {
-  align-items: center;
-  background: rgba(255, 255, 255, 0.9);
-  border-bottom: 1px solid var(--color-border);
-  display: flex;
-  justify-content: space-between;
-  min-height: 100px;
-  padding: 18px clamp(22px, 4vw, 52px);
-}
-
-.workspace-heading {
-  align-items: center;
-  display: flex;
-  gap: 15px;
-  min-width: 0;
-}
-
-.workspace-eyebrow {
-  color: var(--color-primary);
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: 0.13em;
-  margin: 0 0 5px;
-}
-
-.workspace-title {
-  color: var(--color-ink);
-  font-size: 21px;
-  letter-spacing: -0.035em;
-  line-height: 1.2;
-  margin: 0;
-}
-
-.workspace-subtitle {
-  color: var(--color-muted);
-  font-size: 12px;
-  margin: 5px 0 0;
-}
-
-.availability-indicator {
-  align-items: center;
-  background: #f0fdf4;
-  border: 1px solid #dcfce7;
-  border-radius: 20px;
-  color: #3f7657;
-  display: flex;
-  flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 600;
-  gap: 8px;
-  padding: 8px 11px;
-}
-
-.availability-indicator > span {
-  flex-basis: 6px;
-  height: 6px;
-}
-
 .mobile-menu-toggle {
   align-items: center;
   background: #fff;
@@ -321,6 +262,10 @@ select:focus {
 
 .sidebar-backdrop {
   display: none;
+}
+
+.authenticated-panel {
+  position: relative;
 }
 
 .chat-footer-form {
@@ -976,36 +921,17 @@ select:focus {
     z-index: 19;
   }
 
-  .workspace-header {
-    min-height: 82px;
-    padding: 14px 20px;
-  }
-
   .mobile-menu-toggle {
     display: flex;
     flex: 0 0 42px;
-  }
-
-  .workspace-title {
-    font-size: 19px;
-  }
-
-  .availability-indicator {
-    font-size: 0;
-    gap: 0;
-    height: 30px;
-    justify-content: center;
-    padding: 0;
-    width: 30px;
-  }
-
-  .availability-indicator > span {
-    height: 7px;
-    width: 7px;
+    left: 14px;
+    position: absolute;
+    top: 12px;
+    z-index: 1;
   }
 
   .chat-scroller {
-    padding: 22px 20px !important;
+    padding: 62px 20px 22px !important;
   }
 
   .chat-panel footer {
@@ -1030,38 +956,14 @@ select:focus {
 }
 
 @media (max-width: 480px) {
-  .workspace-header {
-    gap: 10px;
-    min-height: 74px;
-    padding: 12px 14px;
-  }
-
-  .workspace-heading {
-    gap: 10px;
-  }
-
   .mobile-menu-toggle {
     flex-basis: 38px;
     height: 38px;
     width: 38px;
   }
 
-  .workspace-eyebrow {
-    font-size: 9px;
-    margin-bottom: 4px;
-  }
-
-  .workspace-title {
-    font-size: 17px;
-  }
-
-  .workspace-subtitle {
-    font-size: 11px;
-    margin-top: 3px;
-  }
-
   .chat-scroller {
-    padding: 18px 14px !important;
+    padding: 58px 14px 18px !important;
   }
 
   .chat-panel footer {

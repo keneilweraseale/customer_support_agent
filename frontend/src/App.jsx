@@ -351,54 +351,6 @@ export default function App() {
         </>
       )}
       <main className={`workspace${authorizationToken ? "" : " workspace-public"}`}>
-        {authorizationToken && (
-          <header className="workspace-header">
-            <div className="workspace-heading">
-              <button
-                aria-controls="primary-sidebar"
-                aria-expanded={isSidebarOpen}
-                aria-label={isSidebarOpen ? "Close navigation" : "Open navigation"}
-                className="mobile-menu-toggle"
-                onClick={() => setIsSidebarOpen((open) => !open)}
-                type="button"
-              >
-                <svg
-                  aria-hidden="true"
-                  fill="none"
-                  height="21"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeWidth="1.8"
-                  viewBox="0 0 24 24"
-                  width="21"
-                >
-                  {isSidebarOpen ? <path d="m6 6 12 12M18 6 6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
-                </svg>
-              </button>
-              <div>
-                <p className="workspace-eyebrow">SUPPORT WORKSPACE</p>
-                <h1 className="workspace-title">
-                  {isDamageReportOpen
-                    ? "Damage report"
-                    : isTicketTrackingOpen
-                      ? "My Support Tickets"
-                      : "Customer support"}
-                </h1>
-                <p className="workspace-subtitle">
-                  {isDamageReportOpen
-                    ? "Tell us what happened and our team will review it."
-                    : isTicketTrackingOpen
-                      ? "Review your requests and follow their progress."
-                      : "Chat with us about orders, delivery, and more."}
-                </p>
-              </div>
-            </div>
-            <div className="availability-indicator">
-              <span aria-hidden="true" />
-              Secure support
-            </div>
-          </header>
-        )}
         <section
           aria-label={
             isDamageReportOpen
@@ -415,6 +367,29 @@ export default function App() {
             ...(!authorizationToken ? styles.publicPanel : {}),
           }}
         >
+          {authorizationToken && (
+            <button
+              aria-controls="primary-sidebar"
+              aria-expanded={isSidebarOpen}
+              aria-label={isSidebarOpen ? "Close navigation" : "Open navigation"}
+              className="mobile-menu-toggle"
+              onClick={() => setIsSidebarOpen((open) => !open)}
+              type="button"
+            >
+              <svg
+                aria-hidden="true"
+                fill="none"
+                height="21"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeWidth="1.8"
+                viewBox="0 0 24 24"
+                width="21"
+              >
+                {isSidebarOpen ? <path d="m6 6 12 12M18 6 6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+              </svg>
+            </button>
+          )}
           {!authorizationToken ? (
             <form className="login-form" onSubmit={signIn} style={styles.loginForm}>
               <div aria-hidden="true" style={styles.loginIllustration}>
