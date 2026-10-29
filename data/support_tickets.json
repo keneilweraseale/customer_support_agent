@@ -166,5 +166,21 @@
     "customer_id": "CUS-DEMO-002",
     "status": "open",
     "created_at": "2026-10-29T09:54:45.394794Z"
+  },
+  {
+    "ticket_id": "SUP-17A2F082D9DF",
+    "conversation_id": "dfe39e4b-d6f7-438f-8b9f-393f8ba2eb06",
+    "customer_message": "if the shipment is delayed i would like to request a refund because i needed that product quickly",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-29T12:36:17.394847Z"
+  },
+  {
+    "ticket_id": "SUP-01BE07EFCF97",
+    "conversation_id": "751976e4-e879-4b9e-91ae-dfde44e0ebb9",
+    "customer_message": "why did the payment fail but the order is shipped",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-29T13:03:34.607136Z"
   }
 ]

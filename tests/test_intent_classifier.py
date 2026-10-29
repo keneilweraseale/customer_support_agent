@@ -79,3 +79,11 @@ def test_intent_classifier_preserves_multiple_customer_tasks() -> None:
     assert classifier.classify(
         "Is it shipped and what is the payment status?"
     ) == ["delivery", "payment"]
+
+
+def test_intent_classifier_accepts_conversation_recall() -> None:
+    classifier, _ = make_classifier('{"intents":["conversation_recall"]}')
+
+    assert classifier.classify(
+        "Do you remember the first text I sent to you?"
+    ) == ["conversation_recall"]

@@ -42,7 +42,7 @@ from app.services.support_email import (
 )
 from app.agent.tools import repository as support_repository
 from app.storage.json_store import ConversationOwnershipError, DataStoreError
-from app.storage.models import SupportTicket
+from app.storage.models import ConversationTurn, SupportTicket
 
 router = APIRouter(prefix="/api", tags=["chat"])
 logger = logging.getLogger(__name__)
@@ -79,6 +79,26 @@ class ChatRequest(BaseModel):
             pattern=r"^[A-Za-z0-9_-]+$",
         ),
     ] | None = None
+
+
+class ConversationHistoryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conversation_id: ConversationId
+    authorization_token: Annotated[
+        str,
+        StringConstraints(
+            strip_whitespace=True,
+            min_length=40,
+            max_length=128,
+            pattern=r"^[A-Za-z0-9_-]+$",
+        ),
+    ]
+
+
+class ConversationHistoryResponse(BaseModel):
+    conversation_id: str
+    turns: list[ConversationTurn]
 
 
 class SupportMessageRequest(BaseModel):
@@ -145,6 +165,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         ChatRoute.PAYMENT,
         ChatRoute.CANCELLATION,
         ChatRoute.BILLING_ISSUE,
+        ChatRoute.CONVERSATION_RECALL,
     }
     if requires_authentication and request.authorization_token is None:
         raise HTTPException(
@@ -175,13 +196,9 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 detail="Conversation context is temporarily unavailable.",
             ) from exc
 
-    conversation_context = (
-        [
-            {"role": turn.role, "text": turn.text}
-            for turn in memory.turns[-6:]
-        ]
-        if memory is not None
-        else None
+    conversation_context = conversation_memory_service.classifier_context(
+        memory,
+        request.message,
     )
     deterministic_decision = decision
     decision = classify_message_with_intent(
@@ -195,6 +212,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         ChatRoute.PAYMENT,
         ChatRoute.CANCELLATION,
         ChatRoute.BILLING_ISSUE,
+        ChatRoute.CONVERSATION_RECALL,
     }
     if any(
         route in private_order_routes
@@ -208,6 +226,18 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 else "Your session is missing or expired. Please sign in again."
             ),
         )
+    context_order_id = memory.last_order_id if memory is not None else None
+    memory_context_used = (
+        request.memory_enabled
+        and customer_id is not None
+        and context_order_id is not None
+        and any(
+            route in private_order_routes
+            for route in (decision.route, *decision.additional_routes)
+        )
+        and decision.order_id is None
+        and not requests_order_search(request.message)
+    )
     ticket_follow_up = (
         decision.route == ChatRoute.SUPPORT_TICKET_MESSAGE
         or SUPPORT_TICKET_FOLLOW_UP.search(request.message) is not None
@@ -234,20 +264,18 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 detail="Your session is missing or expired. Please sign in again.",
             )
 
-    context_order_id = memory.last_order_id if memory is not None else None
-    memory_context_used = (
-        request.memory_enabled
-        and customer_id is not None
-        and context_order_id is not None
-        and any(
-            route in private_order_routes
-            for route in (decision.route, *decision.additional_routes)
+    if decision.route == ChatRoute.CONVERSATION_RECALL:
+        result = OrchestratedChatResult(
+            answer=conversation_memory_service.answer_recall(
+                request.message,
+                memory,
+            ),
+            route=ChatRoute.CONVERSATION_RECALL,
+            sources=[],
+            actions=[],
         )
-        and decision.order_id is None
-        and not requests_order_search(request.message)
-    )
-    result: OrchestratedChatResult
-    if ticket_follow_up:
+        memory_context_used = memory is not None
+    elif ticket_follow_up:
         try:
             ticket = await run_in_threadpool(
                 support_repository.get_latest_support_ticket_for_conversation,
@@ -419,6 +447,49 @@ async def chat(request: ChatRequest) -> ChatResponse:
             short_term_used=memory_context_used,
             long_term_record_created=result.long_term_record_created,
         ),
+    )
+
+
+@router.post("/chat/history", response_model=ConversationHistoryResponse)
+async def load_chat_history(
+    request: ConversationHistoryRequest,
+) -> ConversationHistoryResponse:
+    customer_id = demo_authorization_service.resolve_customer(
+        request.authorization_token
+    )
+    if customer_id is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Your session is missing or expired. Please sign in again.",
+        )
+    try:
+        memory = await run_in_threadpool(
+            conversation_memory_service.get,
+            request.conversation_id,
+            customer_id,
+        )
+    except DataStoreError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Conversation history is temporarily unavailable.",
+        ) from exc
+
+    turns = list(memory.turns) if memory is not None else []
+    first_user_message = (
+        memory.first_user_message if memory is not None else None
+    )
+    if (
+        first_user_message is not None
+        and all(
+            turn.created_at != first_user_message.created_at
+            or turn.text != first_user_message.text
+            for turn in turns
+        )
+    ):
+        turns.insert(0, first_user_message)
+    return ConversationHistoryResponse(
+        conversation_id=request.conversation_id,
+        turns=turns,
     )
 
 

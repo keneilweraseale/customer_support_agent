@@ -40,11 +40,13 @@ This repository implements the customer-support agent described in
   combine policy sources with current product data. Order-related requests
   require a signed-in customer session; cancellation checks eligibility before
   asking for confirmation.
-- **Phase 7:** Authenticated conversations retain at most 12 recent turns and
-  the last order reference, scoped to the verified customer. Memory expires
-  after 30 minutes of inactivity by default, redacts common secret/payment
-  formats, and is used only to resolve follow-up references before current
-  order tools are called; `memory_enabled` can disable short-term storage and
+- **Phase 7:** Authenticated conversations retain up to 200 turns and the first
+  user message, scoped to the verified customer. Memory expires after 30 minutes
+  of inactivity by default, redacts common secret/payment formats, and retrieves
+  a small amount of relevant older context alongside recent turns. The web app
+  restores the active conversation after a page reload; customers can ask the
+  assistant to recall earlier messages. This is retrieval-based memory, not
+  automatic model training. `memory_enabled` can disable short-term storage and
   retrieval. The chat response reports short-term use and whether cancellation
   history was created, never the stored turns. Cancellation requests collect an
   optional reason, require explicit confirmation, and persist eligibility and

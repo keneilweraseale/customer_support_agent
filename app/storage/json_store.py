@@ -20,6 +20,7 @@ from app.storage.models import (
     Product,
     Review,
     SupportTicket,
+    MAX_CONVERSATION_TURNS,
 )
 from app.storage.repository import SupportRepository
 
@@ -43,13 +44,16 @@ class JsonRepository(SupportRepository):
         self,
         data_directory: Path | None = None,
         conversation_ttl: timedelta = timedelta(minutes=30),
-        max_conversation_turns: int = 12,
+        max_conversation_turns: int = MAX_CONVERSATION_TURNS,
         cancellation_history_retention: timedelta = timedelta(days=365),
     ) -> None:
         if conversation_ttl <= timedelta(0):
             raise ValueError("Conversation TTL must be positive.")
-        if not 1 <= max_conversation_turns <= 12:
-            raise ValueError("Conversation memory must retain between 1 and 12 turns.")
+        if not 1 <= max_conversation_turns <= MAX_CONVERSATION_TURNS:
+            raise ValueError(
+                f"Conversation memory must retain between 1 and "
+                f"{MAX_CONVERSATION_TURNS} turns."
+            )
         if cancellation_history_retention <= timedelta(0):
             raise ValueError("Cancellation history retention must be positive.")
         self.data_directory = data_directory or Path(__file__).resolve().parents[2] / "data"

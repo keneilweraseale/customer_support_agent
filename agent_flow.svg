@@ -232,8 +232,8 @@
     <tspan x="1178">Load using conversation ID + verified owner.</tspan>
     <tspan x="1178" dy="23">Can reuse the last order ID for a follow-up;</tspan>
     <tspan x="1178" dy="23">explicit order searches take precedence.</tspan>
-    <tspan x="1178" dy="23">Store at most 12 recent turns; expire after</tspan>
-    <tspan x="1178" dy="23">30 minutes inactivity; redact common secrets.</tspan>
+    <tspan x="1178" dy="23">Keep up to 200 turns + first user message;</tspan>
+    <tspan x="1178" dy="23">expire after 30 minutes; redact secrets.</tspan>
   </text>
   <line x1="1178" y1="1336" x2="1690" y2="1336" stroke="#d7ccfa" stroke-width="2"/>
   <text class="cardtitle" x="1178" y="1372">Human support escalation</text>

@@ -72,6 +72,7 @@ class ChatRoute(str, Enum):
     CLARIFICATION = "clarification"
     BILLING_ISSUE = "billing_issue"
     SUPPORT_TICKET_MESSAGE = "support_ticket_message"
+    CONVERSATION_RECALL = "conversation_recall"
     OUT_OF_SCOPE = "out_of_scope"
     GREETING = "greeting"
 
@@ -1025,6 +1026,7 @@ def classify_message_with_intent(
         ChatRoute.PRODUCT,
         ChatRoute.REVIEWS,
         ChatRoute.GREETING,
+        ChatRoute.CONVERSATION_RECALL,
     }:
         return decision
     try:
@@ -1046,6 +1048,7 @@ def classify_message_with_intent(
         "product": ChatRoute.PRODUCT,
         "reviews": ChatRoute.REVIEWS,
         "support_ticket_message": ChatRoute.SUPPORT_TICKET_MESSAGE,
+        "conversation_recall": ChatRoute.CONVERSATION_RECALL,
         "clarification": ChatRoute.CLARIFICATION,
         "out_of_scope": ChatRoute.OUT_OF_SCOPE,
     }
@@ -1061,6 +1064,16 @@ def classify_message_with_intent(
 
 def classify_message(message: str) -> RouteDecision:
     normalized = message.casefold()
+    if re.search(
+        r"\b(?:remember|recall)\b.{0,40}\b(?:what|first|earlier|"
+        r"message|text|said|sent|asked)\b"
+        r"|\bwhat\s+did\s+i\s+(?:first\s+)?(?:say|send|ask|write)\b"
+        r"|\b(?:first|initial|earliest|original)\b.{0,50}"
+        r"\b(?:message|text|thing|question)\b",
+        normalized,
+    ):
+        return RouteDecision(ChatRoute.CONVERSATION_RECALL)
+
     order_ids = {
         order_id.upper() for order_id in ORDER_ID_PATTERN.findall(message)
     }

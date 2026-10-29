@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import {
   confirmCancellation as sendCancellationConfirmation,
+  loadConversationHistory,
   recordCancellationDecision as sendCancellationDecision,
   login as sendLogin,
   sendChatMessage,
@@ -16,9 +17,22 @@ const welcomeMessage = {
   role: "assistant",
   text: "Hello! How can I help you today? Please don’t share passwords or full payment-card details.",
 };
+const CONVERSATION_STORAGE_KEY = "customer-support-conversation-id";
 
 function createConversationId() {
   return globalThis.crypto?.randomUUID?.() ?? `demo-${Date.now()}`;
+}
+
+function getOrCreateConversationId() {
+  const existing = globalThis.sessionStorage?.getItem(CONVERSATION_STORAGE_KEY);
+  if (existing) return existing;
+  const conversationId = createConversationId();
+  globalThis.sessionStorage?.setItem(CONVERSATION_STORAGE_KEY, conversationId);
+  return conversationId;
+}
+
+function saveConversationId(conversationId) {
+  globalThis.sessionStorage?.setItem(CONVERSATION_STORAGE_KEY, conversationId);
 }
 
 function createMessageId() {
@@ -35,6 +49,7 @@ function routeStatus(route) {
     review_tool: "Review information retrieved",
     rag_and_tool: "Policy and product information retrieved",
     multi: "Requested information retrieved",
+    conversation_recall: "Earlier conversation recalled",
     cancellation_check: "Cancellation eligibility checked",
     clarification: "More information needed",
     support_ticket_message: "Support ticket follow-up",
@@ -42,7 +57,7 @@ function routeStatus(route) {
 }
 
 export default function App() {
-  const [conversationId, setConversationId] = useState(createConversationId);
+  const [conversationId, setConversationId] = useState(getOrCreateConversationId);
   const [messages, setMessages] = useState([welcomeMessage]);
   const [draft, setDraft] = useState("");
   const [email, setEmail] = useState("");
@@ -61,6 +76,26 @@ export default function App() {
       const result = await sendLogin(email.trim(), password);
       setAuthorizationToken(result.authorization_token);
       setPassword("");
+      try {
+        const turns = await loadConversationHistory({
+          conversationId,
+          authorizationToken: result.authorization_token,
+        });
+        setMessages(
+          turns.length
+            ? turns.map((turn) => ({
+                id: createMessageId(),
+                role: turn.role,
+                text: turn.text,
+              }))
+            : [welcomeMessage],
+        );
+      } catch (error) {
+        setMessages([welcomeMessage]);
+        setLoginMessage(
+          `You’re signed in, but I couldn’t restore this conversation: ${error.message}`,
+        );
+      }
     } catch (error) {
       setLoginMessage(error.message);
     } finally {
@@ -94,6 +129,7 @@ export default function App() {
         authorizationToken,
       });
       setConversationId(response.conversation_id);
+      saveConversationId(response.conversation_id);
       setMessages((current) =>
         current.map((message) =>
           message.id === replyId
@@ -140,7 +176,9 @@ export default function App() {
   }
 
   function startNewChat() {
-    setConversationId(createConversationId());
+    const newConversationId = createConversationId();
+    setConversationId(newConversationId);
+    saveConversationId(newConversationId);
     setMessages([welcomeMessage]);
     setDraft("");
     setLoginMessage("");
@@ -152,7 +190,9 @@ export default function App() {
     setMessages([welcomeMessage]);
     setDraft("");
     setLoginMessage("");
-    setConversationId(createConversationId());
+    const newConversationId = createConversationId();
+    setConversationId(newConversationId);
+    saveConversationId(newConversationId);
   }
 
   async function confirmCancellation(

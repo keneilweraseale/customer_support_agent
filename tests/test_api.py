@@ -614,6 +614,84 @@ def test_chat_uses_owner_scoped_memory_for_delivery_follow_up(monkeypatch, tmp_p
     assert "order reference" in other_customer.json()["answer"]
 
 
+def test_chat_recalls_first_message_and_restores_owner_scoped_history(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from app.services.conversation_memory import ConversationMemoryService
+    from app.storage.json_store import JsonRepository
+
+    memory_service = ConversationMemoryService(JsonRepository(tmp_path))
+    monkeypatch.setattr(chat_api, "conversation_memory_service", memory_service)
+
+    class FakeIntentClassifier:
+        def classify(self, message, conversation_context=None):
+            assert "first text" in message.casefold()
+            assert conversation_context
+            assert "My first question was about a delayed parcel." in str(
+                conversation_context
+            )
+            return ["conversation_recall"]
+
+    monkeypatch.setattr(chat_api, "intent_classifier", FakeIntentClassifier())
+    conversation_id = "recall-first-message"
+    memory_service.record_turns(
+        conversation_id,
+        "CUS-DEMO-001",
+        "My first question was about a delayed parcel.",
+        "I can check the delivery for you.",
+        None,
+        None,
+    )
+    token = issue_authorization_token("CUS-DEMO-001")
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "Do you remember the first text I sent to you?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+    restored = client.post(
+        "/api/chat/history",
+        json={
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["route"] == "conversation_recall"
+    assert response.json()["memory"]["short_term_used"] is True
+    assert response.json()["answer"] == (
+        "Your first message was: “My first question was about a delayed parcel.”"
+    )
+    assert restored.status_code == 200
+    assert restored.json()["turns"][0]["text"] == (
+        "My first question was about a delayed parcel."
+    )
+
+    other_customer = client.post(
+        "/api/chat/history",
+        json={
+            "conversation_id": conversation_id,
+            "authorization_token": issue_authorization_token("CUS-DEMO-002"),
+        },
+    )
+    assert other_customer.status_code == 200
+    assert other_customer.json()["turns"] == []
+
+    unauthenticated = client.post(
+        "/api/chat/history",
+        json={
+            "conversation_id": conversation_id,
+            "authorization_token": "a" * 43,
+        },
+    )
+    assert unauthenticated.status_code == 401
+
+
 def test_chat_uses_model_intent_for_typos_and_natural_greetings(monkeypatch) -> None:
     class FakeIntentClassifier:
         calls = []
