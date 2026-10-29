@@ -52,12 +52,18 @@ export default function MessageList({
               {message.text}
 
               {message.actions?.some(
-                (action) => action.type === "support_ticket"
+                (action) =>
+                  action.type === "support_ticket" ||
+                  action.type === "support_ticket_message"
               ) && (
                 <SupportTicketActions
                   action={message.actions.find(
-                    (item) => item.type === "support_ticket"
+                    (item) =>
+                      item.type === "support_ticket" ||
+                      item.type === "support_ticket_message"
                   )}
+                  disabled={isLoading}
+                  messageId={message.id}
                   onSend={onSupportTicketMessage}
                 />
               )}
@@ -179,6 +185,14 @@ function SupportTicketActions({ action, onSend }) {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+function SupportTicketActions({ action, disabled, messageId, onSend }) {
+  const [formOpen, setFormOpen] = useState(
+    action.type === "support_ticket_message",
+  );
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
 
   async function submitMessage(event) {
     event.preventDefault();
@@ -195,6 +209,18 @@ function SupportTicketActions({ action, onSend }) {
       setError(sendError.message);
     } finally {
       setIsSending(false);
+    if (!text || sending || disabled) return;
+    setSending(true);
+    setError("");
+    try {
+      await onSend(action.ticket_id, text);
+      setSent(true);
+      setMessage("");
+      setFormOpen(false);
+    } catch (sendError) {
+      setError(sendError.message);
+    } finally {
+      setSending(false);
     }
   }
 
@@ -237,6 +263,54 @@ function SupportTicketActions({ action, onSend }) {
           {isSending ? "Sending…" : "Send to support"}
         </button>
       </form>
+    <section
+      aria-label="Support ticket"
+      style={styles.supportActions}
+    >
+      <strong>Support ticket: {action.ticket_id}</strong>
+      <p style={{ margin: "8px 0 0" }}>
+        {sent
+          ? "Your additional message was sent to support."
+          : "Your request has been saved as a ticket. Add details below to email the team."}
+      </p>
+      {formOpen ? (
+        <form onSubmit={submitMessage} style={styles.ticketForm}>
+          <label htmlFor={`ticket-message-${messageId}`}>
+            What would you like the support team to know?
+          </label>
+          <textarea
+            disabled={disabled || sending}
+            id={`ticket-message-${messageId}`}
+            onChange={(event) => setMessage(event.target.value)}
+            maxLength={2000}
+            required
+            rows={4}
+            style={styles.ticketTextarea}
+            value={message}
+          />
+          {error && (
+            <p role="alert" style={styles.ticketError}>
+              {error}
+            </p>
+          )}
+          <button
+            disabled={disabled || sending || !message.trim()}
+            style={styles.ticketButton}
+            type="submit"
+          >
+            {sending ? "Sending…" : "Send to support"}
+          </button>
+        </form>
+      ) : (
+        <button
+          disabled={disabled}
+          onClick={() => setFormOpen(true)}
+          style={styles.ticketLink}
+          type="button"
+        >
+          {sent ? "Send another message" : "Add details to this ticket"}
+        </button>
+      )}
     </section>
   );
 }
@@ -331,6 +405,53 @@ const styles = {
     fontSize: 13,
     marginTop: 12,
     paddingTop: 10,
+  },
+
+  ticketForm: {
+    display: "grid",
+    gap: 8,
+    marginTop: 12,
+  },
+
+  ticketTextarea: {
+    border: "1px solid #CBD5E1",
+    borderRadius: 8,
+    color: "#1F2937",
+    font: "inherit",
+    fontSize: 13,
+    padding: 9,
+    resize: "vertical",
+  },
+
+  ticketButton: {
+    background: "#1D4ED8",
+    border: 0,
+    borderRadius: 7,
+    color: "#FFFFFF",
+    cursor: "pointer",
+    font: "inherit",
+    fontSize: 13,
+    fontWeight: 600,
+    justifySelf: "start",
+    padding: "8px 12px",
+  },
+
+  ticketLink: {
+    background: "transparent",
+    border: 0,
+    color: "#1D4ED8",
+    cursor: "pointer",
+    font: "inherit",
+    fontSize: 13,
+    fontWeight: 600,
+    marginTop: 8,
+    padding: 0,
+  },
+
+  ticketError: {
+    color: "#B91C1C",
+    fontSize: 12,
+    margin: 0,
   },
 
   quickActions: {

@@ -23,6 +23,7 @@ from app.storage.models import (
     SupportAgentAccount,
     SupportTicket,
     SupportTicketStatus,
+    MAX_CONVERSATION_TURNS,
 )
 from app.storage.repository import SupportRepository
 
@@ -54,13 +55,16 @@ class JsonRepository(SupportRepository):
         self,
         data_directory: Path | None = None,
         conversation_ttl: timedelta = timedelta(minutes=30),
-        max_conversation_turns: int = 12,
+        max_conversation_turns: int = MAX_CONVERSATION_TURNS,
         cancellation_history_retention: timedelta = timedelta(days=365),
     ) -> None:
         if conversation_ttl <= timedelta(0):
             raise ValueError("Conversation TTL must be positive.")
-        if not 1 <= max_conversation_turns <= 12:
-            raise ValueError("Conversation memory must retain between 1 and 12 turns.")
+        if not 1 <= max_conversation_turns <= MAX_CONVERSATION_TURNS:
+            raise ValueError(
+                f"Conversation memory must retain between 1 and "
+                f"{MAX_CONVERSATION_TURNS} turns."
+            )
         if cancellation_history_retention <= timedelta(0):
             raise ValueError("Cancellation history retention must be positive.")
         self.data_directory = data_directory or Path(__file__).resolve().parents[2] / "data"
@@ -207,6 +211,10 @@ class JsonRepository(SupportRepository):
         self,
         ticket: SupportTicket,
         expected_status: SupportTicketStatus,
+    def get_latest_support_ticket_for_conversation(
+        self,
+        conversation_id: str,
+        customer_id: str,
     ) -> SupportTicket | None:
         with self._write_lock:
             tickets = self._read_optional_records(
@@ -234,6 +242,17 @@ class JsonRepository(SupportRepository):
             tickets[ticket_index] = ticket
             self._write_records("support_tickets.json", tickets)
             return ticket
+            matching_tickets = [
+                ticket
+                for ticket in tickets
+                if ticket.conversation_id == conversation_id
+                and ticket.customer_id == customer_id
+            ]
+            return max(
+                matching_tickets,
+                key=lambda ticket: ticket.created_at,
+                default=None,
+            )
 
     def update_cancellation_event(self, event: CancellationEvent) -> None:
         with self._write_lock:

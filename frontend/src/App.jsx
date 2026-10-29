@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import {
   confirmCancellation as sendCancellationConfirmation,
+  loadConversationHistory,
   recordCancellationDecision as sendCancellationDecision,
   login as sendLogin,
   sendChatMessage,
@@ -19,6 +20,7 @@ const welcomeMessage = {
   text: "Hello! How can I help you today? Please don’t share passwords or full payment-card details.",
 };
 const conversationStorageKey = "customer-support-conversation-id";
+const CONVERSATION_STORAGE_KEY = "customer-support-conversation-id";
 
 function createConversationId() {
   return globalThis.crypto?.randomUUID?.() ?? `demo-${Date.now()}`;
@@ -26,6 +28,16 @@ function createConversationId() {
 
 function getConversationId() {
   return sessionStorage.getItem(conversationStorageKey) || createConversationId();
+function getOrCreateConversationId() {
+  const existing = globalThis.sessionStorage?.getItem(CONVERSATION_STORAGE_KEY);
+  if (existing) return existing;
+  const conversationId = createConversationId();
+  globalThis.sessionStorage?.setItem(CONVERSATION_STORAGE_KEY, conversationId);
+  return conversationId;
+}
+
+function saveConversationId(conversationId) {
+  globalThis.sessionStorage?.setItem(CONVERSATION_STORAGE_KEY, conversationId);
 }
 
 function createMessageId() {
@@ -41,15 +53,20 @@ function routeStatus(route) {
     product_tool: "Product information retrieved",
     review_tool: "Review information retrieved",
     rag_and_tool: "Policy and product information retrieved",
+    multi: "Requested information retrieved",
+    conversation_recall: "Earlier conversation recalled",
+    closing: "Conversation closed",
     cancellation_check: "Cancellation eligibility checked",
     ticket_lookup: "Ticket information retrieved",
     clarification: "More information needed",
     conversation_memory: "Earlier conversation recalled",
+    support_ticket_message: "Support ticket follow-up",
   }[route] ?? "Support information retrieved";
 }
 
 export default function App() {
   const [conversationId, setConversationId] = useState(getConversationId);
+  const [conversationId, setConversationId] = useState(getOrCreateConversationId);
   const [messages, setMessages] = useState([welcomeMessage]);
   const [draft, setDraft] = useState("");
   const [email, setEmail] = useState("");
@@ -73,6 +90,26 @@ export default function App() {
       setAuthorizationToken(result.authorization_token);
       setPassword("");
       setIsPasswordVisible(false);
+      try {
+        const turns = await loadConversationHistory({
+          conversationId,
+          authorizationToken: result.authorization_token,
+        });
+        setMessages(
+          turns.length
+            ? turns.map((turn) => ({
+                id: createMessageId(),
+                role: turn.role,
+                text: turn.text,
+              }))
+            : [welcomeMessage],
+        );
+      } catch (error) {
+        setMessages([welcomeMessage]);
+        setLoginMessage(
+          `You’re signed in, but I couldn’t restore this conversation: ${error.message}`,
+        );
+      }
     } catch (error) {
       setLoginMessage(error.message);
     } finally {
@@ -107,6 +144,7 @@ export default function App() {
       });
       sessionStorage.setItem(conversationStorageKey, response.conversation_id);
       setConversationId(response.conversation_id);
+      saveConversationId(response.conversation_id);
       setMessages((current) =>
         current.map((message) =>
           message.id === replyId
@@ -164,6 +202,8 @@ export default function App() {
     const newConversationId = createConversationId();
     sessionStorage.setItem(conversationStorageKey, newConversationId);
     setConversationId(newConversationId);
+    setConversationId(newConversationId);
+    saveConversationId(newConversationId);
     setMessages([welcomeMessage]);
     setDraft("");
     setLoginMessage("");
@@ -182,6 +222,9 @@ export default function App() {
     setIsDamageReportOpen(false);
     setIsTicketTrackingOpen(false);
     setIsSidebarOpen(false);
+    const newConversationId = createConversationId();
+    setConversationId(newConversationId);
+    saveConversationId(newConversationId);
   }
 
   async function confirmCancellation(
@@ -245,6 +288,8 @@ export default function App() {
     if (!authorizationToken) {
       throw new Error("Your session has expired. Please sign in again.");
     }
+    if (isLoading) return;
+    setIsLoading(true);
     try {
       await sendSupportTicketMessage({
         ticketId,
@@ -257,6 +302,8 @@ export default function App() {
         setLoginMessage(error.message);
       }
       throw error;
+    } finally {
+      setIsLoading(false);
     }
   }
 

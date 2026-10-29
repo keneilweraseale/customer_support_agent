@@ -56,6 +56,8 @@ def test_conversation_memory_is_bounded_and_redacts_sensitive_values(
     assert "4111 1111 1111 1111" not in first.turns[0].text
     assert "customer@example.com" not in first.turns[1].text
     assert "secret-token" not in first.turns[1].text
+    assert first.first_user_message is not None
+    assert first.first_user_message.text.startswith("[redacted]")
     saved = service.record_turns(
         conversation_id,
         "CUS-DEMO-001",
@@ -73,6 +75,43 @@ def test_conversation_memory_is_bounded_and_redacts_sensitive_values(
     assert saved.turns[0].text == "Retry using [redacted]"
     assert "processing" in saved.turns[1].text
     assert saved.last_order_id == "ORD-1001"
+    assert service.answer_recall("What was my first message?", saved) == (
+        "Your first message was: “[redacted] and card [redacted]”"
+    )
+    context = service.classifier_context(
+        saved,
+        "Do you remember the first text I sent?",
+    )
+    assert context is not None
+    assert any(
+        turn["text"].startswith("[redacted]")
+        for turn in context
+    )
+
+
+def test_memory_retrieves_relevant_older_turns_for_context(tmp_path: Path) -> None:
+    repository = JsonRepository(tmp_path, max_conversation_turns=20)
+    service = ConversationMemoryService(repository)
+    conversation_id = "older-context"
+    memory = None
+    for index in range(5):
+        memory = service.record_turns(
+            conversation_id,
+            "CUS-DEMO-001",
+            (
+                "The delivery was delayed because the address was missing."
+                if index == 0
+                else f"Follow-up conversation topic number {index}."
+            ),
+            f"Assistant response number {index}.",
+            None,
+            memory,
+        )
+
+    assert memory is not None
+    context = service.classifier_context(memory, "What happened with the address?")
+    assert context is not None
+    assert any("address was missing" in turn["text"] for turn in context)
 
 
 def test_conversation_memory_is_owner_scoped(tmp_path: Path) -> None:

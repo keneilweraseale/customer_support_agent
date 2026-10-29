@@ -1,8 +1,11 @@
 from app.agent.router import (
     ChatOrchestrator,
     ChatRoute,
+    RouteDecision,
     classify_message,
+    classify_message_with_intent,
 )
+from app.agent.intent_classifier import IntentClassificationError
 from app.rag.providers import ProviderConfigurationError
 from app.rag.service import PolicyAnswer
 from app.rag.retrieval import HybridSearchResult
@@ -160,12 +163,28 @@ def test_classifier_selects_supported_route_types() -> None:
     )
     assert (
         classify_message(
+            "But my money was charged from my bank, what’s going on?"
+        ).route
+        == ChatRoute.BILLING_ISSUE
+    )
+    assert (
+        classify_message(
             "My delivery has not arrived and I don't remember the order number."
         ).route
         == ChatRoute.DELIVERY
     )
     assert classify_message("What is the capital of France?").route == ChatRoute.OUT_OF_SCOPE
     assert classify_message("Hello there!").route == ChatRoute.GREETING
+    assert classify_message("Thank you").route == ChatRoute.CLOSING
+    assert classify_message("Bye bye, have a nice day").route == ChatRoute.CLOSING
+    assert (
+        classify_message("Thank you, can you track order ORD-1001?").route
+        == ChatRoute.DELIVERY
+    )
+    assert (
+        classify_message("Do you remember the first text I sent to you?").route
+        == ChatRoute.CONVERSATION_RECALL
+    )
     assert classify_message("What is the cancellation policy?").route == ChatRoute.POLICY
     assert classify_message("How do I cancel an order?").route == ChatRoute.POLICY
     assert (
@@ -177,6 +196,82 @@ def test_classifier_selects_supported_route_types() -> None:
         classify_message("Where are ORD-1001 and ORD-1002?").route
         == ChatRoute.CLARIFICATION
     )
+
+
+def test_model_intent_understands_greetings_and_typos() -> None:
+    class FakeClassifier:
+        def classify(self, message, conversation_context=None):
+            del conversation_context
+            return ["greeting"] if message.startswith("Hi") else ["order"]
+
+    assert (
+        classify_message_with_intent("Hi how are you", FakeClassifier()).route
+        == ChatRoute.GREETING
+    )
+    decision = classify_message_with_intent(
+        "whats the curret status fir ORD-1002",
+        FakeClassifier(),
+    )
+    assert decision.route == ChatRoute.ORDER
+    assert decision.order_id == "ORD-1002"
+
+
+def test_failed_model_intent_falls_back_to_deterministic_routing() -> None:
+    class FailedClassifier:
+        def classify(self, message, conversation_context=None):
+            del message, conversation_context
+            raise IntentClassificationError("provider unavailable")
+
+    decision = classify_message_with_intent(
+        "Hi how are you",
+        FailedClassifier(),
+    )
+
+    assert decision.route == ChatRoute.OUT_OF_SCOPE
+
+
+def test_model_intent_routes_multiple_order_questions_together() -> None:
+    class FakeClassifier:
+        def classify(self, message, conversation_context=None):
+            del message, conversation_context
+            return ["delivery", "payment"]
+
+    decision = classify_message_with_intent(
+        "Is it shipped and what is the payment status for ORD-1002?",
+        FakeClassifier(),
+    )
+
+    assert decision.route == ChatRoute.DELIVERY
+    assert decision.additional_routes == (ChatRoute.PAYMENT,)
+    assert decision.order_id == "ORD-1002"
+
+
+def test_model_intent_can_route_conversation_recall() -> None:
+    class FakeClassifier:
+        def classify(self, message, conversation_context=None):
+            del message, conversation_context
+            return ["conversation_recall"]
+
+    decision = classify_message_with_intent(
+        "Can you recall what I said earlier?",
+        FakeClassifier(),
+    )
+
+    assert decision.route == ChatRoute.CONVERSATION_RECALL
+
+
+def test_model_intent_can_route_non_literal_conversational_closings() -> None:
+    class FakeClassifier:
+        def classify(self, message, conversation_context=None):
+            del message, conversation_context
+            return ["closing"]
+
+    decision = classify_message_with_intent(
+        "Much appreciated, that's all for today.",
+        FakeClassifier(),
+    )
+
+    assert decision.route == ChatRoute.CLOSING
 
 
 def test_unrelated_question_gets_friendly_scope_response_without_rag() -> None:
@@ -257,6 +352,82 @@ def test_billing_issue_escalates_when_payment_record_is_unavailable() -> None:
     assert "couldn’t access its payment record" in result.answer
     assert result.needs_human_support is True
     assert "recorded as paid" not in result.answer
+
+
+def test_failed_payment_bank_charge_is_explained_with_empathy() -> None:
+    orchestrator, tools, _ = make_orchestrator()
+    tools["payment"].result["payments"][0]["payment_status"] = "failed"
+
+    result = orchestrator.handle(
+        "But my money was charged from my bank, what’s going on?",
+        "CUS-DEMO-001",
+        "ORD-1001",
+    )
+
+    assert result.route == ChatRoute.BILLING_ISSUE
+    assert "I’m sorry—that’s worrying" in result.answer
+    assert "our payment record shows the attempt failed" in result.answer
+    assert "can’t see your bank’s transaction status" in result.answer
+    assert "Please ask your bank to confirm" in result.answer
+    assert "payment PAY-1001" not in result.answer
+    assert result.needs_human_support is True
+    assert tools["order"].calls == [
+        {"order_id": "ORD-1001", "customer_id": "CUS-DEMO-001"}
+    ]
+    assert tools["payment"].calls == [
+        {"order_id": "ORD-1001", "customer_id": "CUS-DEMO-001"}
+    ]
+
+
+def test_shipped_order_with_failed_payment_explains_mismatch() -> None:
+    orchestrator, tools, _ = make_orchestrator()
+    tools["order"].result["order_status"] = "shipped"
+    tools["payment"].result["payments"][0]["payment_status"] = "failed"
+
+    result = orchestrator.handle(
+        "So how can it be shipped when the payment has failed?",
+        "CUS-DEMO-001",
+        "ORD-1001",
+        route_decision=RouteDecision(ChatRoute.BILLING_ISSUE),
+    )
+
+    assert result.route == ChatRoute.BILLING_ISSUE
+    assert "I can see why it seems contradictory" in result.answer
+    assert "order ORD-1001 as shipped" in result.answer
+    assert "payment record shows the attempt failed" in result.answer
+    assert "don’t tell me why fulfillment proceeded" in result.answer
+    assert "I don’t want to guess" in result.answer
+    assert result.needs_human_support is True
+    assert tools["order"].calls == [
+        {"order_id": "ORD-1001", "customer_id": "CUS-DEMO-001"}
+    ]
+    assert tools["payment"].calls == [
+        {"order_id": "ORD-1001", "customer_id": "CUS-DEMO-001"}
+    ]
+
+
+def test_multiple_delivery_and_payment_questions_use_both_tools() -> None:
+    orchestrator, tools, _ = make_orchestrator()
+
+    result = orchestrator.handle(
+        "Is it shipped and what is the payment status?",
+        "CUS-DEMO-001",
+        "ORD-1001",
+        route_decision=RouteDecision(
+            route=ChatRoute.DELIVERY,
+            additional_routes=(ChatRoute.PAYMENT,),
+        ),
+    )
+
+    assert result.route == ChatRoute.MULTI
+    assert "Shipment SHIP-1001 is in_transit" in result.answer
+    assert "Payment PAY-1001 is paid" in result.answer
+    assert tools["delivery"].calls == [
+        {"order_id": "ORD-1001", "customer_id": "CUS-DEMO-001"}
+    ]
+    assert tools["payment"].calls == [
+        {"order_id": "ORD-1001", "customer_id": "CUS-DEMO-001"}
+    ]
 
 
 def test_delivery_without_order_number_searches_verified_customer_orders() -> None:

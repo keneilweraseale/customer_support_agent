@@ -177,6 +177,8 @@ def isolate_chat_memory(monkeypatch, tmp_path) -> None:
     from app.services.conversation_memory import ConversationMemoryService
     from app.storage.json_store import JsonRepository
 
+    monkeypatch.setattr(chat_api, "intent_classifier", None)
+    monkeypatch.setattr(chat_api, "_intent_classifier_initialized", True)
     repository = JsonRepository(tmp_path)
     monkeypatch.setattr(
         chat_api,
@@ -202,6 +204,20 @@ def test_unknown_route_returns_standard_json_error() -> None:
     assert error["message"] == "Not Found"
     assert UUID(error["request_id"])
     assert response.headers["X-Request-ID"] == error["request_id"]
+
+
+def test_intent_classifier_is_loaded_lazily_from_environment(monkeypatch) -> None:
+    classifier = object()
+    monkeypatch.setattr(chat_api, "intent_classifier", None)
+    monkeypatch.setattr(chat_api, "_intent_classifier_initialized", False)
+    monkeypatch.setattr(
+        chat_api,
+        "intent_classifier_from_environment",
+        lambda: classifier,
+    )
+
+    assert chat_api._configured_intent_classifier() is classifier
+    assert chat_api._intent_classifier_initialized is True
 
 
 def test_chat_returns_grounded_policy_answer(monkeypatch) -> None:
@@ -292,6 +308,31 @@ def test_unresolved_chat_creates_owned_ticket_without_external_contact_links(
     assert "4111 1111 1111 1111" not in tickets
     assert ticket_action["ticket_id"] in tickets
     assert "CUS-DEMO-001" in tickets
+
+    follow_up = client.post(
+        "/api/chat",
+        json={
+            "message": (
+                "Or maybe I can write my own message to the team and tell them "
+                "what my exact problem is"
+            ),
+            "conversation_id": "demo-refund-escalation",
+            "authorization_token": token,
+        },
+    )
+
+    assert follow_up.status_code == 200
+    follow_up_data = follow_up.json()
+    assert follow_up_data["route"] == "support_ticket_message"
+    assert "Absolutely—you can add details" in follow_up_data["answer"]
+    assert follow_up_data["actions"] == [
+        {
+            "type": "support_ticket_message",
+            "ticket_id": ticket_action["ticket_id"],
+        }
+    ]
+    assert follow_up_data["needs_human_support"] is False
+    assert tickets.count(ticket_action["ticket_id"]) == 1
 
 
 def test_escalated_ticket_preserves_recent_conversation_and_order_reference(
@@ -1210,6 +1251,326 @@ def test_chat_uses_owner_scoped_memory_for_delivery_follow_up(monkeypatch, tmp_p
         "long_term_record_created": False,
     }
     assert "order reference" in other_customer.json()["answer"]
+
+
+def test_chat_recalls_first_message_and_restores_owner_scoped_history(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from app.services.conversation_memory import ConversationMemoryService
+    from app.storage.json_store import JsonRepository
+
+    memory_service = ConversationMemoryService(JsonRepository(tmp_path))
+    monkeypatch.setattr(chat_api, "conversation_memory_service", memory_service)
+
+    class FakeIntentClassifier:
+        def classify(self, message, conversation_context=None):
+            assert "first text" in message.casefold()
+            assert conversation_context
+            assert "My first question was about a delayed parcel." in str(
+                conversation_context
+            )
+            return ["conversation_recall"]
+
+    monkeypatch.setattr(chat_api, "intent_classifier", FakeIntentClassifier())
+    conversation_id = "recall-first-message"
+    memory_service.record_turns(
+        conversation_id,
+        "CUS-DEMO-001",
+        "My first question was about a delayed parcel.",
+        "I can check the delivery for you.",
+        None,
+        None,
+    )
+    token = issue_authorization_token("CUS-DEMO-001")
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "Do you remember the first text I sent to you?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+    restored = client.post(
+        "/api/chat/history",
+        json={
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["route"] == "conversation_recall"
+    assert response.json()["memory"]["short_term_used"] is True
+    assert response.json()["answer"] == (
+        "Your first message was: “My first question was about a delayed parcel.”"
+    )
+    assert restored.status_code == 200
+    assert restored.json()["turns"][0]["text"] == (
+        "My first question was about a delayed parcel."
+    )
+
+    other_customer = client.post(
+        "/api/chat/history",
+        json={
+            "conversation_id": conversation_id,
+            "authorization_token": issue_authorization_token("CUS-DEMO-002"),
+        },
+    )
+    assert other_customer.status_code == 200
+    assert other_customer.json()["turns"] == []
+
+    unauthenticated = client.post(
+        "/api/chat/history",
+        json={
+            "conversation_id": conversation_id,
+            "authorization_token": "a" * 43,
+        },
+    )
+    assert unauthenticated.status_code == 401
+
+
+def test_chat_closes_warmly_and_reminds_customer_of_open_ticket(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from datetime import datetime, timezone
+
+    from app.storage.json_store import JsonRepository
+    from app.storage.models import SupportTicket
+
+    repository = JsonRepository(tmp_path)
+    monkeypatch.setattr(chat_api, "support_repository", repository)
+    monkeypatch.setattr(chat_api, "orchestrator", build_default_orchestrator())
+    token = issue_authorization_token("CUS-DEMO-001")
+
+    thank_you = client.post(
+        "/api/chat",
+        json={
+            "message": "Thank you",
+            "conversation_id": "warm-close-no-ticket",
+            "authorization_token": token,
+        },
+    )
+    assert thank_you.status_code == 200
+    assert thank_you.json()["route"] == "closing"
+    assert "You’re very welcome!" in thank_you.json()["answer"]
+    assert "glad I could help" in thank_you.json()["answer"]
+
+    repository.append_support_ticket(
+        SupportTicket(
+            ticket_id="SUP-OPEN-123",
+            conversation_id="warm-close-open-ticket",
+            customer_id="CUS-DEMO-001",
+            customer_message="My parcel has not arrived.",
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    goodbye = client.post(
+        "/api/chat",
+        json={
+            "message": "Bye bye",
+            "conversation_id": "warm-close-open-ticket",
+            "authorization_token": token,
+        },
+    )
+
+    assert goodbye.status_code == 200
+    assert goodbye.json()["route"] == "closing"
+    assert "support ticket SUP-OPEN-123 is still open" in goodbye.json()["answer"]
+    assert "Take care" in goodbye.json()["answer"]
+    assert goodbye.json()["actions"] == []
+
+
+def test_chat_uses_model_intent_for_typos_and_natural_greetings(monkeypatch) -> None:
+    class FakeIntentClassifier:
+        calls = []
+
+        def classify(self, message, conversation_context=None):
+            self.calls.append((message, conversation_context))
+            if message.startswith("Hi"):
+                return ["greeting"]
+            return ["order"]
+
+    monkeypatch.setattr(chat_api, "intent_classifier", FakeIntentClassifier())
+    monkeypatch.setattr(chat_api, "orchestrator", build_default_orchestrator())
+    token = issue_authorization_token("CUS-DEMO-002")
+    conversation_id = "typo-order-follow-up"
+
+    greeting = client.post(
+        "/api/chat",
+        json={"message": "Hi how are you"},
+    )
+    order_status = client.post(
+        "/api/chat",
+        json={
+            "message": "whats the curret status fir ORD-1002",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+    follow_up = client.post(
+        "/api/chat",
+        json={
+            "message": "and now?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+
+    assert greeting.status_code == 200
+    assert greeting.json()["route"] == "greeting"
+    assert "What can I help you with?" in greeting.json()["answer"]
+    assert order_status.status_code == 200
+    assert order_status.json()["route"] == "order_tool"
+    assert "Order ORD-1002 is currently shipped." in order_status.json()["answer"]
+    assert follow_up.status_code == 200
+    assert follow_up.json()["memory"]["short_term_used"] is True
+    assert "Order ORD-1002 is currently shipped." in follow_up.json()["answer"]
+    assert FakeIntentClassifier.calls[2][1][-2]["text"] == (
+        "whats the curret status fir ORD-1002"
+    )
+
+
+def test_chat_understands_follow_up_about_conflicting_order_and_payment(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from app.services.conversation_memory import ConversationMemoryService
+    from app.storage.json_store import JsonRepository
+
+    class FakeIntentClassifier:
+        def classify(self, message, conversation_context=None):
+            if conversation_context and "how can it be shipped" in message.casefold():
+                assert "PAY-1002 is failed" in conversation_context[-1]["text"]
+                assert "order ORD-1002" in str(conversation_context)
+                return ["billing_issue"]
+            return ["payment"]
+
+    monkeypatch.setattr(chat_api, "intent_classifier", FakeIntentClassifier())
+    monkeypatch.setattr(chat_api, "orchestrator", build_default_orchestrator())
+    monkeypatch.setattr(
+        chat_api,
+        "conversation_memory_service",
+        ConversationMemoryService(JsonRepository(tmp_path)),
+    )
+    token = issue_authorization_token("CUS-DEMO-002")
+    conversation_id = "shipped-failed-payment-follow-up"
+
+    first = client.post(
+        "/api/chat",
+        json={
+            "message": "What is the payment status for order ORD-1002?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+    follow_up = client.post(
+        "/api/chat",
+        json={
+            "message": "So how can it be shipped when the payment has failed?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+
+    assert first.status_code == 200
+    assert "PAY-1002 is failed" in first.json()["answer"]
+    assert follow_up.status_code == 200
+    assert follow_up.json()["route"] == "billing_issue"
+    assert follow_up.json()["memory"]["short_term_used"] is True
+    assert "order ORD-1002 as shipped" in follow_up.json()["answer"]
+    assert "payment record shows the attempt failed" in follow_up.json()["answer"]
+    assert "don’t tell me why fulfillment proceeded" in follow_up.json()["answer"]
+    assert "I don’t want to guess" in follow_up.json()["answer"]
+    assert follow_up.json()["needs_human_support"] is True
+    assert follow_up.json()["actions"][0]["type"] == "support_ticket"
+
+
+def test_chat_answers_delivery_and_payment_questions_in_one_turn(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from app.services.conversation_memory import ConversationMemoryService
+    from app.storage.json_store import JsonRepository
+
+    class FakeIntentClassifier:
+        def classify(self, message, conversation_context=None):
+            if "is it shipped" in message.casefold():
+                return ["delivery", "payment"]
+            return ["payment"]
+
+    monkeypatch.setattr(chat_api, "intent_classifier", FakeIntentClassifier())
+    monkeypatch.setattr(chat_api, "orchestrator", build_default_orchestrator())
+    monkeypatch.setattr(
+        chat_api,
+        "conversation_memory_service",
+        ConversationMemoryService(JsonRepository(tmp_path)),
+    )
+    token = issue_authorization_token("CUS-DEMO-002")
+    combined = client.post(
+        "/api/chat",
+        json={
+            "message": "Is it shipped and what is the payment status for ORD-1002?",
+            "conversation_id": "multi-delivery-payment",
+            "authorization_token": token,
+        },
+    )
+
+    assert combined.status_code == 200
+    assert combined.json()["route"] == "multi"
+    assert combined.json()["memory"]["short_term_used"] is False
+    assert "Shipment SHIP-1002 is delayed" in combined.json()["answer"]
+    assert "Payment PAY-1002 is failed" in combined.json()["answer"]
+
+
+def test_chat_uses_memory_to_escalate_follow_up_bank_charge_concern(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from app.services.conversation_memory import ConversationMemoryService
+    from app.storage.json_store import JsonRepository
+
+    monkeypatch.setattr(chat_api, "orchestrator", build_default_orchestrator())
+    monkeypatch.setattr(
+        chat_api,
+        "conversation_memory_service",
+        ConversationMemoryService(JsonRepository(tmp_path)),
+    )
+    token = issue_authorization_token("CUS-DEMO-002")
+    conversation_id = "payment-bank-charge-follow-up"
+
+    first = client.post(
+        "/api/chat",
+        json={
+            "message": "What are the payment details for order ORD-1002?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+    follow_up = client.post(
+        "/api/chat",
+        json={
+            "message": "But my money was charged from my bank, what’s going on?",
+            "conversation_id": conversation_id,
+            "authorization_token": token,
+        },
+    )
+
+    assert first.status_code == 200
+    assert "PAY-1002 is failed" in first.json()["answer"]
+    assert follow_up.status_code == 200
+    assert follow_up.json()["route"] == "billing_issue"
+    assert follow_up.json()["memory"]["short_term_used"] is True
+    assert "order ORD-1002" in follow_up.json()["answer"]
+    assert "I can see why it seems contradictory" in follow_up.json()["answer"]
+    assert "payment record shows the attempt failed" in follow_up.json()["answer"]
+    assert "whether your bank’s charge is pending or settled" in follow_up.json()["answer"]
+    assert follow_up.json()["needs_human_support"] is True
+    assert follow_up.json()["actions"][0]["type"] == "support_ticket"
+    tickets = (tmp_path / "support_tickets.json").read_text(encoding="utf-8")
+    assert "But my money was charged from my bank" in tickets
 
 
 def test_chat_does_not_reuse_expired_conversation_context(

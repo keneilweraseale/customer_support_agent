@@ -19,6 +19,7 @@ Identifier = Annotated[
         pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$",
     ),
 ]
+MAX_CONVERSATION_TURNS = 200
 
 
 class RecordModel(BaseModel):
@@ -58,7 +59,8 @@ class SupportTicketCustomerUpdate(RecordModel):
 class ConversationMemory(RecordModel):
     conversation_id: Annotated[str, StringConstraints(min_length=1, max_length=100)]
     owner_id: Identifier
-    turns: list[ConversationTurn] = Field(max_length=12)
+    turns: list[ConversationTurn] = Field(max_length=MAX_CONVERSATION_TURNS)
+    first_user_message: ConversationTurn | None = None
     last_order_id: Identifier | None
     created_at: datetime
     updated_at: datetime

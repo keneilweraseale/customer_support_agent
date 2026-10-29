@@ -12,6 +12,25 @@ export async function sendChatMessage({ message, conversationId, authorizationTo
   return data;
 }
 
+export async function loadConversationHistory({ conversationId, authorizationToken }) {
+  const data = await postJson("/api/chat/history", {
+    conversation_id: conversationId,
+    authorization_token: authorizationToken,
+  });
+  if (
+    data.conversation_id !== conversationId
+    || !Array.isArray(data.turns)
+    || data.turns.some(
+      (turn) =>
+        !["user", "assistant"].includes(turn.role)
+        || typeof turn.text !== "string",
+    )
+  ) {
+    throw new Error("We received an unexpected conversation-history response.");
+  }
+  return data.turns;
+}
+
 export async function sendSupportTicketMessage({
   ticketId,
   message,
