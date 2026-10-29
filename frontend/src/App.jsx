@@ -11,6 +11,7 @@ import DamageReport from "./components/DamageReport.jsx";
 import ChatComposer from "./components/ChatComposer.jsx";
 import ChatHeader from "./components/ChatHeader.jsx";
 import MessageList from "./components/MessageList.jsx";
+import TicketTracking from "./components/TicketTracking.jsx";
 
 const welcomeMessage = {
   id: "welcome",
@@ -41,6 +42,7 @@ function routeStatus(route) {
     review_tool: "Review information retrieved",
     rag_and_tool: "Policy and product information retrieved",
     cancellation_check: "Cancellation eligibility checked",
+    ticket_lookup: "Ticket information retrieved",
     clarification: "More information needed",
     conversation_memory: "Earlier conversation recalled",
   }[route] ?? "Support information retrieved";
@@ -58,6 +60,7 @@ export default function App() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isDamageReportOpen, setIsDamageReportOpen] = useState(false);
+  const [isTicketTrackingOpen, setIsTicketTrackingOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   async function signIn(event) {
@@ -165,6 +168,7 @@ export default function App() {
     setDraft("");
     setLoginMessage("");
     setIsDamageReportOpen(false);
+    setIsTicketTrackingOpen(false);
   }
 
   function signOut() {
@@ -176,6 +180,7 @@ export default function App() {
     setLoginMessage("");
     setConversationId(createConversationId());
     setIsDamageReportOpen(false);
+    setIsTicketTrackingOpen(false);
     setIsSidebarOpen(false);
   }
 
@@ -321,7 +326,15 @@ export default function App() {
             authenticated
             disabled={isLoading}
             isDamageReportOpen={isDamageReportOpen}
-            onDamageReport={() => setIsDamageReportOpen(true)}
+            isTicketTrackingOpen={isTicketTrackingOpen}
+            onDamageReport={() => {
+              setIsTicketTrackingOpen(false);
+              setIsDamageReportOpen(true);
+            }}
+            onTickets={() => {
+              setIsDamageReportOpen(false);
+              setIsTicketTrackingOpen(true);
+            }}
             onLogout={signOut}
             onNewChat={startNewChat}
             onClose={() => setIsSidebarOpen(false)}
@@ -338,52 +351,12 @@ export default function App() {
         </>
       )}
       <main className={`workspace${authorizationToken ? "" : " workspace-public"}`}>
-        {authorizationToken && (
-          <header className="workspace-header">
-            <div className="workspace-heading">
-              <button
-                aria-controls="primary-sidebar"
-                aria-expanded={isSidebarOpen}
-                aria-label={isSidebarOpen ? "Close navigation" : "Open navigation"}
-                className="mobile-menu-toggle"
-                onClick={() => setIsSidebarOpen((open) => !open)}
-                type="button"
-              >
-                <svg
-                  aria-hidden="true"
-                  fill="none"
-                  height="21"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeWidth="1.8"
-                  viewBox="0 0 24 24"
-                  width="21"
-                >
-                  {isSidebarOpen ? <path d="m6 6 12 12M18 6 6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
-                </svg>
-              </button>
-              <div>
-                <p className="workspace-eyebrow">SUPPORT WORKSPACE</p>
-                <h1 className="workspace-title">
-                  {isDamageReportOpen ? "Damage report" : "Customer support"}
-                </h1>
-                <p className="workspace-subtitle">
-                  {isDamageReportOpen
-                    ? "Tell us what happened and our team will review it."
-                    : "Chat with us about orders, delivery, and more."}
-                </p>
-              </div>
-            </div>
-            <div className="availability-indicator">
-              <span aria-hidden="true" />
-              Secure support
-            </div>
-          </header>
-        )}
         <section
           aria-label={
             isDamageReportOpen
               ? "Report a damaged item"
+              : isTicketTrackingOpen
+                ? "My support tickets"
               : authorizationToken
                 ? "Customer support chat"
                 : "Sign in to customer support"
@@ -394,6 +367,29 @@ export default function App() {
             ...(!authorizationToken ? styles.publicPanel : {}),
           }}
         >
+          {authorizationToken && (
+            <button
+              aria-controls="primary-sidebar"
+              aria-expanded={isSidebarOpen}
+              aria-label={isSidebarOpen ? "Close navigation" : "Open navigation"}
+              className="mobile-menu-toggle"
+              onClick={() => setIsSidebarOpen((open) => !open)}
+              type="button"
+            >
+              <svg
+                aria-hidden="true"
+                fill="none"
+                height="21"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeWidth="1.8"
+                viewBox="0 0 24 24"
+                width="21"
+              >
+                {isSidebarOpen ? <path d="m6 6 12 12M18 6 6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+              </svg>
+            </button>
+          )}
           {!authorizationToken ? (
             <form className="login-form" onSubmit={signIn} style={styles.loginForm}>
               <div aria-hidden="true" style={styles.loginIllustration}>
@@ -462,6 +458,16 @@ export default function App() {
                 <DamageReport
                   authorizationToken={authorizationToken}
                   onBack={() => setIsDamageReportOpen(false)}
+                />
+              ) : isTicketTrackingOpen ? (
+                <TicketTracking
+                  authorizationToken={authorizationToken}
+                  onBack={() => setIsTicketTrackingOpen(false)}
+                  onSendMessage={sendTicketMessage}
+                  onSessionExpired={(message) => {
+                    setAuthorizationToken("");
+                    setLoginMessage(message);
+                  }}
                 />
               ) : (
                 <>

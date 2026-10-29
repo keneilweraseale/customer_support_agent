@@ -41,6 +41,8 @@ class SupportRepository(Protocol):
 
     def get_support_ticket(self, ticket_id: str) -> SupportTicket | None: ...
 
+    def get_support_tickets(self) -> list[SupportTicket]: ...
+
     def update_support_ticket(
         self,
         ticket: SupportTicket,

@@ -18,5 +18,15 @@
     "description": "i HAVE A DAMAGEND GOOD",
     "image_filename": "3817e1e6-7440-420e-9ae0-9afbfbb4efad.jpg",
     "created_at": "2026-10-29T09:11:26.945436Z"
+  },
+  {
+    "report_id": "260d9875-2141-4d07-8a93-6521bf6bc5db",
+    "idempotency_key": "788c41bd-9094-4650-8d14-e704732c0f07",
+    "request_fingerprint": "b5bbe64e767ca1b1838a4b5279defe94286652e901ef5de47b2db6aee44c0efb",
+    "customer_id": "CUS-DEMO-001",
+    "order_id": "ORD-1001",
+    "description": "Tshiamo's eyes",
+    "image_filename": "260d9875-2141-4d07-8a93-6521bf6bc5db.jpg",
+    "created_at": "2026-10-29T12:05:52.201395Z"
   }
 ]

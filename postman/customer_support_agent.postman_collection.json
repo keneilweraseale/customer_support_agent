@@ -204,6 +204,80 @@
       }
     },
     {
+      "name": "My support tickets",
+      "description": "Lists tickets owned by the authenticated customer only. Run Customer login first.",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{authorizationToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/tickets"
+      }
+    },
+    {
+      "name": "Ticket details",
+      "description": "Returns public details for a ticket owned by the signed-in customer. Foreign and missing tickets both return 404.",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{authorizationToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/tickets/SUP-C8D5BFA0A575"
+      }
+    },
+    {
+      "name": "Reply to support ticket",
+      "description": "Sends a customer reply through the configured support email. Replies are not currently persisted in the ticket timeline.",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"authorization_token\": \"{{authorizationToken}}\",\n  \"message\": \"The delivery address is correct.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/support/tickets/SUP-C8D5BFA0A575/message"
+      }
+    },
+    {
+      "name": "Ticket status via chat",
+      "description": "Answers from the authenticated customer's persisted tickets only.",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"What is the status of ticket SUP-C8D5BFA0A575?\",\n  \"authorization_token\": \"{{authorizationToken}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/chat"
+      }
+    },
+    {
       "name": "Product availability (planned)",
       "request": {
         "method": "GET",

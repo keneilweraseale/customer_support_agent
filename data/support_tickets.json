@@ -304,5 +304,29 @@
     "status_history": [],
     "customer_update": null,
     "created_at": "2026-10-29T07:18:19.548632Z"
+  },
+  {
+    "ticket_id": "SUP-534AE5876203",
+    "conversation_id": "89c5cc78-cab4-4dff-8beb-9907533ea6a2",
+    "customer_message": "What is your warranty policy?",
+    "customer_id": "CUS-DEMO-001",
+    "order_id": null,
+    "issue_summary": "What is your warranty policy?",
+    "conversation_context": [
+      {
+        "role": "user",
+        "text": "What is your warranty policy?",
+        "created_at": "2026-10-29T12:04:38.329121Z"
+      },
+      {
+        "role": "assistant",
+        "text": "I couldn’t find enough information in the approved policy documents to verify that. Please contact support for help.",
+        "created_at": "2026-10-29T12:04:38.329121Z"
+      }
+    ],
+    "status": "open",
+    "status_history": [],
+    "customer_update": null,
+    "created_at": "2026-10-29T12:04:38.329121Z"
   }
 ]

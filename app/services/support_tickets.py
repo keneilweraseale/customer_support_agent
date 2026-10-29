@@ -17,7 +17,8 @@ _ALLOWED_STATUS_TRANSITIONS: dict[
     "investigating": {"open", "waiting_for_customer", "escalated", "resolved"},
     "waiting_for_customer": {"open", "investigating", "escalated", "resolved"},
     "escalated": {"open", "investigating", "waiting_for_customer", "resolved"},
-    "resolved": {"open"},
+    "resolved": {"open", "closed"},
+    "closed": set(),
 }
 MAX_STATUS_HISTORY = 100
 

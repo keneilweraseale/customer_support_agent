@@ -195,6 +195,14 @@ class JsonRepository(SupportRepository):
                 None,
             )
 
+    def get_support_tickets(self) -> list[SupportTicket]:
+        with self._write_lock:
+            return self._read_optional_records(
+                "support_tickets.json",
+                SupportTicket,
+                "ticket_id",
+            )
+
     def update_support_ticket(
         self,
         ticket: SupportTicket,

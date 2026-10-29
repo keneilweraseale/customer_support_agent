@@ -27,6 +27,25 @@ export async function sendSupportTicketMessage({
   return data;
 }
 
+export async function getCustomerTickets(authorizationToken) {
+  const data = await getJson("/api/tickets", authorizationToken);
+  if (!Array.isArray(data.tickets)) {
+    throw new Error("We received an unexpected ticket list. Please try again.");
+  }
+  return data.tickets;
+}
+
+export async function getCustomerTicket(ticketId, authorizationToken) {
+  const data = await getJson(
+    `/api/tickets/${encodeURIComponent(ticketId)}`,
+    authorizationToken,
+  );
+  if (data.ticket_id !== ticketId || !Array.isArray(data.messages)) {
+    throw new Error("We received unexpected ticket details. Please try again.");
+  }
+  return data;
+}
+
 export async function login(email, password) {
   let data;
   try {
@@ -144,6 +163,32 @@ async function postJson(url, body, additionalHeaders = {}) {
   if (!response.ok) {
     throw await responseError(response);
   }
+  try {
+    return await response.json();
+  } catch {
+    throw new Error("We received an unexpected response. Please try again.");
+  }
+}
+
+async function getJson(url, authorizationToken) {
+  let response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    response = await fetch(url, {
+      headers: { Authorization: `Bearer ${authorizationToken}` },
+      signal: controller.signal,
+    });
+  } catch {
+    const error = new Error(
+      "We could not reach support or the request timed out. Please try again.",
+    );
+    error.retryable = true;
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!response.ok) throw await responseError(response);
   try {
     return await response.json();
   } catch {

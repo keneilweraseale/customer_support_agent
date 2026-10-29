@@ -29,6 +29,15 @@ function NavigationIcon({ name }) {
     );
   }
 
+  if (name === "tickets") {
+    return (
+      <svg {...sharedProps}>
+        <path d="M7 4h10a2 2 0 0 1 2 2v14H5V6a2 2 0 0 1 2-2Z" />
+        <path d="M9 4.5V3h6v1.5M8.5 9h7M8.5 13h7M8.5 17h4" />
+      </svg>
+    );
+  }
+
   if (name === "sign-out") {
     return (
       <svg {...sharedProps}>
@@ -50,9 +59,11 @@ export default function ChatHeader({
   authenticated,
   disabled,
   isDamageReportOpen,
+  isTicketTrackingOpen,
   onLogout,
   onNewChat,
   onDamageReport,
+  onTickets,
   onClose,
   open,
 }) {
@@ -73,6 +84,19 @@ export default function ChatHeader({
         {authenticated ? (
           <nav aria-label="Main navigation" className="sidebar-navigation">
             <button
+              aria-current={isTicketTrackingOpen ? "page" : undefined}
+              className={`sidebar-action${isTicketTrackingOpen ? " sidebar-action-active" : ""}`}
+              disabled={disabled}
+              onClick={() => {
+                onTickets();
+                onClose();
+              }}
+              type="button"
+            >
+              <NavigationIcon name="tickets" />
+              <span>My Support Tickets</span>
+            </button>
+            <button
               aria-current={isDamageReportOpen ? "page" : undefined}
               className={`sidebar-action${isDamageReportOpen ? " sidebar-action-active" : ""}`}
               disabled={disabled}
@@ -86,7 +110,7 @@ export default function ChatHeader({
               <span>Report damaged item</span>
             </button>
             <button
-              className={`sidebar-action${!isDamageReportOpen ? " sidebar-action-active" : ""}`}
+              className={`sidebar-action${!isDamageReportOpen && !isTicketTrackingOpen ? " sidebar-action-active" : ""}`}
               disabled={disabled}
               onClick={() => {
                 onNewChat();
