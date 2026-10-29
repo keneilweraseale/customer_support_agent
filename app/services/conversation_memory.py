@@ -5,7 +5,9 @@ from app.storage.models import ConversationMemory, ConversationTurn
 from app.storage.repository import SupportRepository
 
 _SENSITIVE_ASSIGNMENT = re.compile(
-    r"\b(?:password|passcode|access[_ -]?token|authorization)\b"
+    r"\b(?:[A-Z0-9_]*(?:API[_ -]?KEY|SECRET(?:[_ -]?ACCESS)?[_ -]?KEY|"
+    r"CLIENT[_ -]?SECRET)|secret[_ -]?key|client[_ -]?secret|"
+    r"password|passcode|access[_ -]?token|authorization)\b"
     r"\s*(?:is|[:=])\s*\S+",
     re.IGNORECASE,
 )

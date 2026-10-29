@@ -276,7 +276,10 @@ class PolicyIngestor:
 def main() -> None:
     from dotenv import load_dotenv
 
-    load_dotenv()
+    load_dotenv(
+        dotenv_path=Path(__file__).resolve().parents[2] / ".env",
+        override=False,
+    )
     chunker, embedder = providers_from_environment()
     data_directory = Path(__file__).resolve().parents[2] / "data"
     ingestor = PolicyIngestor(

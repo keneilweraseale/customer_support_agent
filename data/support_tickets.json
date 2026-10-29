@@ -3,7 +3,128 @@
     "ticket_id": "SUP-0738300D0849",
     "conversation_id": "9cc79fd0-e50c-4b33-b91a-00f99b623eca",
     "customer_message": "My order ORD-1002 is marked cancelled, but my bank account was charged. I want my money back. The cancellation happened days ago, so don't tell me to wait without checking anything.",
+    "customer_id": null,
     "status": "open",
     "created_at": "2026-10-27T06:12:26.829399Z"
+  },
+  {
+    "ticket_id": "SUP-37EE774FB04D",
+    "conversation_id": "d49e25fa-09db-4a87-8c26-a37ecc8eb1e7",
+    "customer_message": "My order ORD-1001 says delivered, but I never received it. I've checked with my neighbours and around my property. I need this sorted out today. Don't just tell me to track my parcel again.My order ORD-1001 is marked cancelled, but my bank account was charged. I want my money back. The cancellation happened days ago, so don't tell me to wait without checking anything.I ordered something last week, it hasn't arrived, and support keeps ignoring me. I don't remember the order number. Can you find it and escalate this?",
+    "customer_id": null,
+    "status": "open",
+    "created_at": "2026-10-27T07:56:27.202637Z"
+  },
+  {
+    "ticket_id": "SUP-ABD99B8CBC39",
+    "conversation_id": "250b36c6-3583-4834-a49e-c635d378620f",
+    "customer_message": "My orderORD-1002 is marked cancelled, but my bank account was charged. I want my money back. The cancellation happened days ago, so don't tell me to wait without checking anything.",
+    "customer_id": null,
+    "status": "open",
+    "created_at": "2026-10-27T08:05:00.531465Z"
+  },
+  {
+    "ticket_id": "SUP-956F6FD1C1D1",
+    "conversation_id": "250b36c6-3583-4834-a49e-c635d378620f",
+    "customer_message": "I ordered something last week, it hasn't arrived, and support keeps ignoring me. I don't remember the order number. Can you find it and escalate this?",
+    "customer_id": null,
+    "status": "open",
+    "created_at": "2026-10-27T08:10:06.462243Z"
+  },
+  {
+    "ticket_id": "SUP-F3BB6D994CF1",
+    "conversation_id": "77a8f5ff-4fee-48f3-9732-0aa5e275bd36",
+    "customer_message": "My Order ORD-1001 has been canceled and my bank account was charged can i want my money back i dont care what you have to say",
+    "customer_id": null,
+    "status": "open",
+    "created_at": "2026-10-28T06:15:49.462919Z"
+  },
+  {
+    "ticket_id": "SUP-A640F38A5D49",
+    "conversation_id": "936d80b9-7c7f-49c5-b160-5307cf6ba99e",
+    "customer_message": "My order ORD-1001 has been cancelled and my bank account was already charged , please bring back my money and i do not want to hear anything else",
+    "customer_id": null,
+    "status": "open",
+    "created_at": "2026-10-28T06:33:54.413403Z"
+  },
+  {
+    "ticket_id": "SUP-C8D5BFA0A575",
+    "conversation_id": "27b69e62-3572-4ad4-9145-7524c867defe",
+    "customer_message": "can you please contact the team support",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-28T07:26:45.578876Z"
+  },
+  {
+    "ticket_id": "SUP-BB9D2B584F60",
+    "conversation_id": "d6230029-8b55-4774-bb35-b1279f7868fc",
+    "customer_message": "Can you please contact customer support",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-28T07:36:25.451430Z"
+  },
+  {
+    "ticket_id": "SUP-E65505F1673B",
+    "conversation_id": "2f709308-7b68-443c-a6f3-bffb82d05f6f",
+    "customer_message": "Please contact customer support. I have a big issue.",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-28T07:41:51.160948Z"
+  },
+  {
+    "ticket_id": "SUP-80128852BED9",
+    "conversation_id": "5a57bd71-438b-456a-ac56-e88a18de4f97",
+    "customer_message": "Contact support",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-28T08:12:49.225793Z"
+  },
+  {
+    "ticket_id": "SUP-B4AC6AEBA075",
+    "conversation_id": "b20c46ba-1a33-4ac2-9cfb-c9fae01eaa24",
+    "customer_message": "Contact support",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-28T08:30:10.245724Z"
+  },
+  {
+    "ticket_id": "SUP-86BAA315B237",
+    "conversation_id": "8c0c00dc-1c24-4c30-90c1-5012f3db987a",
+    "customer_message": "Contact support",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-28T08:32:46.119023Z"
+  },
+  {
+    "ticket_id": "SUP-F1F01BBBFBA8",
+    "conversation_id": "6905acb2-45ad-4919-a08b-c9573051807a",
+    "customer_message": "Contact support",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-28T08:36:18.081277Z"
+  },
+  {
+    "ticket_id": "SUP-951F28EEDF66",
+    "conversation_id": "aba68cf3-d8b6-49a3-bb42-14b042dcd516",
+    "customer_message": "Contact support",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-28T08:51:32.516271Z"
+  },
+  {
+    "ticket_id": "SUP-AAFDF5126A4B",
+    "conversation_id": "0a134014-f73b-4e1b-a106-bcbe3a26a608",
+    "customer_message": "Contact support",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-28T09:02:13.646826Z"
+  },
+  {
+    "ticket_id": "SUP-2F6B71FF0651",
+    "conversation_id": "62d8beef-f8e9-4141-850b-93368a60fae4",
+    "customer_message": "Contact support",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-28T09:53:46.393996Z"
   }
 ]

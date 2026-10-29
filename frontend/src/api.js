@@ -12,6 +12,21 @@ export async function sendChatMessage({ message, conversationId, authorizationTo
   return data;
 }
 
+export async function sendSupportTicketMessage({
+  ticketId,
+  message,
+  authorizationToken,
+}) {
+  const data = await postJson(
+    `/api/support/tickets/${encodeURIComponent(ticketId)}/message`,
+    { message, authorization_token: authorizationToken },
+  );
+  if (data.sent !== true || data.ticket_id !== ticketId) {
+    throw new Error("We could not confirm that your message was sent. Please try again.");
+  }
+  return data;
+}
+
 export async function login(email, password) {
   let data;
   try {
@@ -114,7 +129,16 @@ async function responseError(response) {
     error.status = 401;
     return error;
   }
-  const error = new Error("Support is temporarily unavailable. Please try again.");
+  let message = "Support is temporarily unavailable. Please try again.";
+  try {
+    const data = await response.json();
+    if (typeof data?.error?.message === "string") {
+      message = data.error.message;
+    }
+  } catch {
+    // Keep the generic message when the server response is not valid JSON.
+  }
+  const error = new Error(message);
   error.retryable = response.status === 503;
   error.status = response.status;
   return error;

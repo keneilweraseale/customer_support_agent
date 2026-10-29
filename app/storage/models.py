@@ -97,6 +97,7 @@ class SupportTicket(RecordModel):
     ]
     conversation_id: Annotated[str, StringConstraints(min_length=1, max_length=100)]
     customer_message: Annotated[str, StringConstraints(min_length=1, max_length=2000)]
+    customer_id: Identifier | None = None
     status: Literal["open"] = "open"
     created_at: datetime
 

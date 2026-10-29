@@ -5,6 +5,7 @@ import {
   recordCancellationDecision as sendCancellationDecision,
   login as sendLogin,
   sendChatMessage,
+  sendSupportTicketMessage,
 } from "./api.js";
 import ChatComposer from "./components/ChatComposer.jsx";
 import ChatHeader from "./components/ChatHeader.jsx";
@@ -209,6 +210,17 @@ export default function App() {
     }
   }
 
+  async function sendTicketMessage(ticketId, message) {
+    if (!authorizationToken) {
+      throw new Error("Your session has expired. Please sign in again.");
+    }
+    await sendSupportTicketMessage({
+      ticketId,
+      message,
+      authorizationToken,
+    });
+  }
+
   async function recordCancellationDecision(
     messageId,
     orderId,
@@ -322,6 +334,7 @@ export default function App() {
                 onConfirmCancellation={confirmCancellation}
                 onQuickAction={(action) => submitMessage(action)}
                 onRetry={(text) => submitMessage(text)}
+                onSupportTicketMessage={sendTicketMessage}
               />
               <footer style={styles.footer}>
                 <ChatComposer

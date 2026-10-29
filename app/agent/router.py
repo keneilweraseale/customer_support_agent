@@ -29,7 +29,18 @@ POLICY_WORDS = (
 )
 CANCEL_WORDS = ("cancel", "cancellation")
 ARRIVAL_WORDS = ("arrive", "arrived", "late", "missing", "overdue", "hasn't come")
-ESCALATION_WORDS = ("escalate", "support keeps ignoring", "ignored me", "human agent")
+ESCALATION_WORDS = (
+    "escalate",
+    "support keeps ignoring",
+    "ignored me",
+    "human agent",
+    "human support",
+    "contact support",
+    "contact a human",
+    "speak to a human",
+    "talk to a human",
+    "real person",
+)
 ORDER_SEARCH_WORDS = (
     "find it",
     "find my order",
@@ -182,7 +193,11 @@ class ChatOrchestrator:
                     sources=[],
                     actions=[],
                 )
-            return self._check_billing_issue(decision.order_id, customer_id)
+            return self._check_billing_issue(
+                decision.order_id,
+                customer_id,
+                actual_tool_calls,
+            )
 
         if decision.route == ChatRoute.POLICY:
             return self._answer_policy(message, actual_tool_calls)
@@ -203,7 +218,11 @@ class ChatOrchestrator:
                 and self._customer_orders_tool is not None
                 and requests_order_search(message)
             ):
-                return self._find_delivery_order(message, customer_id)
+                return self._find_delivery_order(
+                    message,
+                    customer_id,
+                    actual_tool_calls,
+                )
             if decision.order_id is None:
                 return OrchestratedChatResult(
                     answer=(
@@ -310,7 +329,7 @@ class ChatOrchestrator:
             route=ChatRoute.POLICY,
             sources=result.sources,
             actions=[],
-            needs_human_support=result.needs_human_support,
+            needs_human_support=getattr(result, "needs_human_support", False),
             retrieval_context=[
                 retrieved.chunk.text for retrieved in result.retrieval.results
             ],
@@ -354,7 +373,7 @@ class ChatOrchestrator:
             route=ChatRoute.MIXED,
             sources=policy_result.sources,
             actions=[],
-            needs_human_support=policy_result.needs_human_support,
+            needs_human_support=getattr(policy_result, "needs_human_support", False),
             retrieval_context=[
                 retrieved.chunk.text for retrieved in policy_result.retrieval.results
             ],
@@ -428,17 +447,25 @@ class ChatOrchestrator:
         self,
         order_id: str,
         customer_id: str,
+        actual_tool_calls: list[dict[str, object]],
     ) -> OrchestratedChatResult:
         order_result = self._invoke_tool(
             self._order_tool,
             {"order_id": order_id, "customer_id": customer_id},
+            "get_order_status",
+            actual_tool_calls,
         )
         payment_result = self._invoke_tool(
             self._payment_tool,
             {"order_id": order_id, "customer_id": customer_id},
+            "get_payment_status",
+            actual_tool_calls,
         )
+        def finish(result: OrchestratedChatResult) -> OrchestratedChatResult:
+            return self._with_tool_calls(result, actual_tool_calls)
+
         if order_result.get("unavailable") is True:
-            return OrchestratedChatResult(
+            return finish(OrchestratedChatResult(
                 answer=(
                     f"I couldn’t access the order record for {order_id}, so I "
                     "couldn’t verify its cancellation or payment. I’m escalating "
@@ -448,9 +475,9 @@ class ChatOrchestrator:
                 sources=[],
                 actions=[],
                 needs_human_support=True,
-            )
+            ))
         if payment_result.get("unavailable") is True:
-            return OrchestratedChatResult(
+            return finish(OrchestratedChatResult(
                 answer=(
                     f"I checked order {order_id}, but couldn’t access its payment "
                     "record. I’m escalating this so the team can check the charge "
@@ -460,9 +487,9 @@ class ChatOrchestrator:
                 sources=[],
                 actions=[],
                 needs_human_support=True,
-            )
+            ))
         if order_result.get("found") is not True:
-            return OrchestratedChatResult(
+            return finish(OrchestratedChatResult(
                 answer=(
                     f"I couldn’t find order {order_id} for this verified demo "
                     "customer, so I couldn’t check its payment."
@@ -471,7 +498,7 @@ class ChatOrchestrator:
                 sources=[],
                 actions=[],
                 needs_human_support=True,
-            )
+            ))
         order_status = order_result.get("order_status")
         payments = payment_result.get("payments")
         if (
@@ -486,7 +513,7 @@ class ChatOrchestrator:
                 for item in payments
             )
         ):
-            return OrchestratedChatResult(
+            return finish(OrchestratedChatResult(
                 answer=(
                     f"I found order {order_id}, but couldn’t verify both its "
                     "order and payment records. I’m escalating this so the team "
@@ -496,7 +523,7 @@ class ChatOrchestrator:
                 sources=[],
                 actions=[],
                 needs_human_support=True,
-            )
+            ))
 
         payment_summary = "; ".join(
             f"payment {item['payment_id']} is recorded as {item['payment_status']}"
@@ -528,27 +555,31 @@ class ChatOrchestrator:
                 f"{payment_summary}. I can’t issue a refund directly, so I’m "
                 "escalating your refund request for review."
             )
-        return OrchestratedChatResult(
+        return finish(OrchestratedChatResult(
             answer=answer,
             route=ChatRoute.BILLING_ISSUE,
             sources=[],
             actions=[],
             needs_human_support=True,
-        )
+        ))
 
     def _find_delivery_order(
         self,
         message: str,
         customer_id: str,
+        actual_tool_calls: list[dict[str, object]],
     ) -> OrchestratedChatResult:
-        assert self._customer_orders_tool is not None
+        if self._customer_orders_tool is None:
+            raise RuntimeError("Customer order search tool is not configured.")
         result = self._invoke_tool(
             self._customer_orders_tool,
             {"customer_id": customer_id},
+            "find_customer_orders",
+            actual_tool_calls,
         )
         orders = result.get("orders")
         if not isinstance(orders, list):
-            return OrchestratedChatResult(
+            return self._with_tool_calls(OrchestratedChatResult(
                 answer=(
                     "I couldn’t access your order list just now. I’m escalating "
                     "your delivery concern; if you contact support, sharing the "
@@ -558,7 +589,7 @@ class ChatOrchestrator:
                 sources=[],
                 actions=[],
                 needs_human_support=True,
-            )
+            ), actual_tool_calls)
         candidates = [
             item
             for item in orders
@@ -580,18 +611,20 @@ class ChatOrchestrator:
                     "verified demo account. Please share the item or approximate "
                     "order date so I can narrow it down."
                 )
-            return OrchestratedChatResult(
+            return self._with_tool_calls(OrchestratedChatResult(
                 answer=answer,
                 route=ChatRoute.DELIVERY,
                 sources=[],
                 actions=[],
                 needs_human_support=has_any(message.casefold(), ESCALATION_WORDS),
-            )
+            ), actual_tool_calls)
 
         order_id = candidates[0]["order_id"]
         delivery_result = self._invoke_tool(
             self._delivery_tool,
             {"order_id": order_id, "customer_id": customer_id},
+            "get_delivery_status",
+            actual_tool_calls,
         )
         answer = self._format_order_result(ChatRoute.DELIVERY, delivery_result).answer
         should_escalate = has_any(message.casefold(), ESCALATION_WORDS)
@@ -601,13 +634,13 @@ class ChatOrchestrator:
                 f"{answer} Since you asked for escalation, I’m sending this "
                 "delivery concern to the support team."
             )
-        return OrchestratedChatResult(
+        return self._with_tool_calls(OrchestratedChatResult(
             answer=answer,
             route=ChatRoute.DELIVERY,
             sources=[],
             actions=[],
             needs_human_support=should_escalate,
-        )
+        ), actual_tool_calls)
 
     def _invoke_tool(
         self,
@@ -669,6 +702,7 @@ class ChatOrchestrator:
             actions=result.actions,
             needs_confirmation=result.needs_confirmation,
             long_term_record_created=result.long_term_record_created,
+            needs_human_support=result.needs_human_support,
             retrieval_context=result.retrieval_context,
             actual_tool_calls=list(actual_tool_calls),
         )
