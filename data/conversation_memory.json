@@ -1,32 +1,22 @@
 [
   {
-    "conversation_id": "5ac45eed-12ef-48aa-89d4-a7fe7236339e",
+    "conversation_id": "99f76bb5-ebba-4ace-a611-b32158145071",
     "owner_id": "CUS-DEMO-001",
     "turns": [
       {
         "role": "user",
-        "text": "Check order status for ORD-1001",
-        "created_at": "2026-10-27T11:48:32.785673Z"
+        "text": "Check an order",
+        "created_at": "2026-10-28T07:06:45.679977Z"
       },
       {
         "role": "assistant",
-        "text": "Order ORD-1001 is currently cancelled.",
-        "created_at": "2026-10-27T11:48:32.785673Z"
-      },
-      {
-        "role": "user",
-        "text": "Check order status for ORD-1002",
-        "created_at": "2026-10-27T11:48:58.033811Z"
-      },
-      {
-        "role": "assistant",
-        "text": "I couldn’t find that order for this demo customer.",
-        "created_at": "2026-10-27T11:48:58.033811Z"
+        "text": "Please provide your order reference (for example, ORD-1001).",
+        "created_at": "2026-10-28T07:06:45.679977Z"
       }
     ],
-    "last_order_id": "ORD-1002",
-    "created_at": "2026-10-27T11:48:32.785673Z",
-    "updated_at": "2026-10-27T11:48:58.034006Z",
-    "expires_at": "2026-10-27T12:18:58.034006Z"
+    "last_order_id": null,
+    "created_at": "2026-10-28T07:06:45.679977Z",
+    "updated_at": "2026-10-28T07:06:45.680226Z",
+    "expires_at": "2026-10-28T07:36:45.680226Z"
   }
 ]
