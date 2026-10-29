@@ -45,6 +45,10 @@ class SupportTicketConflictError(DataStoreError):
     """Raised when a ticket changed before a requested status update was saved."""
 
 
+class DamageReportConflictError(DataStoreError):
+    """Raised when an idempotency key is reused for a different damage report."""
+
+
 class JsonRepository(SupportRepository):
     def __init__(
         self,
@@ -334,6 +338,78 @@ class JsonRepository(SupportRepository):
                 ),
                 None,
             )
+
+    def create_damage_report(
+        self,
+        report: DamageReport,
+        image_bytes: bytes,
+    ) -> tuple[DamageReport, bool]:
+        with self._write_lock:
+            reports = self._read_optional_records(
+                "damage_reports.json",
+                DamageReport,
+                "report_id",
+            )
+            existing = next(
+                (
+                    item
+                    for item in reports
+                    if item.idempotency_key == report.idempotency_key
+                ),
+                None,
+            )
+            if existing is not None:
+                if existing.request_fingerprint != report.request_fingerprint:
+                    raise DamageReportConflictError(
+                        "Idempotency key was already used for a different report."
+                    )
+                return existing, False
+            if any(item.report_id == report.report_id for item in reports):
+                raise DataStoreError("Damage report ID already exists.")
+
+            image_directory = self.data_directory / "damage_report_images"
+            image_path = image_directory / report.image_filename
+            temporary_path: Path | None = None
+            image_installed = False
+            try:
+                image_directory.mkdir(parents=True, exist_ok=True)
+                if image_path.exists():
+                    raise DataStoreError("Damage report image already exists.")
+                with tempfile.NamedTemporaryFile(
+                    mode="wb",
+                    dir=image_directory,
+                    delete=False,
+                ) as temporary_file:
+                    temporary_path = Path(temporary_file.name)
+                    temporary_file.write(image_bytes)
+                os.replace(temporary_path, image_path)
+                temporary_path = None
+                image_installed = True
+                reports.append(report)
+                self._write_records("damage_reports.json", reports)
+            except (OSError, DataStoreError) as exc:
+                if image_installed:
+                    try:
+                        image_path.unlink()
+                    except OSError as cleanup_error:
+                        raise DataStoreError(
+                            "Damage report could not be saved and its image could not be removed."
+                        ) from cleanup_error
+                if isinstance(exc, DataStoreError):
+                    raise
+                raise DataStoreError("Could not write damage report image.") from exc
+            finally:
+                if temporary_path is not None:
+                    try:
+                        temporary_path.unlink()
+                    except FileNotFoundError:
+                        pass
+                    except OSError as cleanup_error:
+                        raise DataStoreError(
+                            "Could not remove temporary damage report image."
+                        ) from cleanup_error
+
+            return report, True
 
     def get_customer_accounts(self) -> list[CustomerAccount]:
         with self._write_lock:
