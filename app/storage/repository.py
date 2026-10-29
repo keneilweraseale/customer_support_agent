@@ -5,6 +5,7 @@ from app.storage.models import (
     CancellationEvent,
     ConversationMemory,
     CustomerAccount,
+    DamageReport,
     Delivery,
     Order,
     Payment,
@@ -12,7 +13,9 @@ from app.storage.models import (
     PolicyDocument,
     Product,
     Review,
+    SupportAgentAccount,
     SupportTicket,
+    SupportTicketStatus,
 )
 
 
@@ -38,6 +41,12 @@ class SupportRepository(Protocol):
 
     def get_support_ticket(self, ticket_id: str) -> SupportTicket | None: ...
 
+    def update_support_ticket(
+        self,
+        ticket: SupportTicket,
+        expected_status: SupportTicketStatus,
+    ) -> SupportTicket | None: ...
+
     def expire_old_cancellation_events(
         self,
         now: datetime | None = None,
@@ -48,6 +57,10 @@ class SupportRepository(Protocol):
     def get_customer_accounts(self) -> list[CustomerAccount]: ...
 
     def create_customer_account(self, account: CustomerAccount) -> None: ...
+
+    def get_support_agent_accounts(self) -> list[SupportAgentAccount]: ...
+
+    def create_support_agent_account(self, account: SupportAgentAccount) -> None: ...
 
     def get_order(self, order_id: str) -> Order | None: ...
 

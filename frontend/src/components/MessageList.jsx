@@ -199,13 +199,10 @@ function SupportTicketActions({ action, onSend }) {
   }
 
   return (
-    <section
-      aria-label="Support ticket"
-      style={styles.supportActions}
-    >
-      <strong>Support ticket: {action.ticket_id}</strong>
-      <p style={{ margin: "8px 0 0" }}>
-        Your request has been recorded. Add details for the support team if you need more help.
+    <section aria-label="Contact human support" style={styles.supportActions}>
+      <strong>Ticket {action.ticket_id}</strong>
+      <p style={styles.supportDescription}>
+        A ticket does not notify an agent yet. Send your message below to reach our support team.
       </p>
       <form className="ticket-message-form" onSubmit={submitMessage}>
         <label htmlFor={`ticket-message-${action.ticket_id}`}>

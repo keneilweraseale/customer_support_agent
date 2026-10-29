@@ -12,6 +12,7 @@ from app.storage.models import (
     CancellationEvent,
     ConversationMemory,
     CustomerAccount,
+    DamageReport,
     Delivery,
     Order,
     Payment,
@@ -19,7 +20,9 @@ from app.storage.models import (
     PolicyDocument,
     Product,
     Review,
+    SupportAgentAccount,
     SupportTicket,
+    SupportTicketStatus,
 )
 from app.storage.repository import SupportRepository
 
@@ -36,6 +39,10 @@ class ConversationOwnershipError(DataStoreError):
 
 class CancellationConsistencyError(DataStoreError):
     """Raised when the order and cancellation history cannot be synchronized."""
+
+
+class SupportTicketConflictError(DataStoreError):
+    """Raised when a ticket changed before a requested status update was saved."""
 
 
 class JsonRepository(SupportRepository):
@@ -183,6 +190,38 @@ class JsonRepository(SupportRepository):
                 (ticket for ticket in tickets if ticket.ticket_id == ticket_id),
                 None,
             )
+
+    def update_support_ticket(
+        self,
+        ticket: SupportTicket,
+        expected_status: SupportTicketStatus,
+    ) -> SupportTicket | None:
+        with self._write_lock:
+            tickets = self._read_optional_records(
+                "support_tickets.json",
+                SupportTicket,
+                "ticket_id",
+            )
+            ticket_index = next(
+                (
+                    index
+                    for index, existing in enumerate(tickets)
+                    if existing.ticket_id == ticket.ticket_id
+                ),
+                None,
+            )
+            if ticket_index is None:
+                return None
+            existing = tickets[ticket_index]
+            if existing.status != expected_status:
+                raise SupportTicketConflictError(
+                    "Support ticket status changed before the update was saved."
+                )
+            if existing.customer_id != ticket.customer_id:
+                raise DataStoreError("Support ticket owner cannot be changed.")
+            tickets[ticket_index] = ticket
+            self._write_records("support_tickets.json", tickets)
+            return ticket
 
     def update_cancellation_event(self, event: CancellationEvent) -> None:
         with self._write_lock:
@@ -332,6 +371,42 @@ class JsonRepository(SupportRepository):
                 raise DataStoreError("The account must be linked to a known customer.")
             accounts.append(account)
             self._write_records("customer_accounts.json", accounts)
+
+    def get_support_agent_accounts(self) -> list[SupportAgentAccount]:
+        with self._write_lock:
+            accounts = self._read_optional_records(
+                "support_agents.json",
+                SupportAgentAccount,
+                "staff_id",
+            )
+            normalized_emails = [account.email.casefold() for account in accounts]
+            staff_ids = [account.staff_id for account in accounts]
+            if len(normalized_emails) != len(set(normalized_emails)):
+                raise DataStoreError("Support-agent account emails must be unique.")
+            if len(staff_ids) != len(set(staff_ids)):
+                raise DataStoreError("Support-agent IDs must be unique.")
+            return accounts
+
+    def create_support_agent_account(self, account: SupportAgentAccount) -> None:
+        with self._write_lock:
+            accounts = self._read_optional_records(
+                "support_agents.json",
+                SupportAgentAccount,
+                "staff_id",
+            )
+            if any(
+                existing.email.casefold() == account.email.casefold()
+                for existing in accounts
+            ):
+                raise DataStoreError(
+                    "A support-agent account already exists for that email address."
+                )
+            if any(existing.staff_id == account.staff_id for existing in accounts):
+                raise DataStoreError(
+                    "A support-agent account already exists for that staff ID."
+                )
+            accounts.append(account)
+            self._write_records("support_agents.json", accounts)
 
     def get_orders(self) -> list[Order]:
         with self._write_lock:
