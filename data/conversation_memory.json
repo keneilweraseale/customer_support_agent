@@ -1,56 +1,5 @@
 [
   {
-    "conversation_id": "dfe39e4b-d6f7-438f-8b9f-393f8ba2eb06",
-    "owner_id": "CUS-DEMO-002",
-    "turns": [
-      {
-        "role": "user",
-        "text": "Hi how are you",
-        "created_at": "2026-10-29T12:34:58.462810Z"
-      },
-      {
-        "role": "assistant",
-        "text": "Hi! I can help with orders, deliveries, payments, returns, products, or store policies. What can I help you with?",
-        "created_at": "2026-10-29T12:34:58.462810Z"
-      },
-      {
-        "role": "user",
-        "text": "i need to know my order ORD-1002 status on delivery and payment",
-        "created_at": "2026-10-29T12:35:36.239334Z"
-      },
-      {
-        "role": "assistant",
-        "text": "Order ORD-1002 is currently shipped.\n\nShipment SHIP-1002 is delayed, estimated for 2026-10-26T18:00:00+00:00.\n\nPayment PAY-1002 is failed (code: DEMO_PAYMENT_DECLINED)",
-        "created_at": "2026-10-29T12:35:36.239334Z"
-      },
-      {
-        "role": "user",
-        "text": "if the shipment is delayed i would like to request a refund because i needed that product quickly",
-        "created_at": "2026-10-29T12:36:17.411768Z"
-      },
-      {
-        "role": "assistant",
-        "text": "I’m sorry—that’s worrying, and I can see why it seems contradictory. Our records show order ORD-1002 as shipped, while the payment record shows the attempt failed. Those records don’t tell me why fulfillment proceeded or whether your bank’s charge is pending or settled, so I don’t want to guess. I’ve created a support ticket for the team to review the order and payment records. It will only be sent to support when you submit a message using the ticket form.\n\nI’ve created support ticket SUP-17A2F082D9DF for follow-up.",
-        "created_at": "2026-10-29T12:36:17.411768Z"
-      },
-      {
-        "role": "user",
-        "text": "do you remember the first text i sent to you",
-        "created_at": "2026-10-29T12:38:48.843150Z"
-      },
-      {
-        "role": "assistant",
-        "text": "Hi there! I’m here to help with this store’s orders, deliveries, payments, returns, products, and policies. I can’t answer general questions outside those topics, but I’d be glad to help with a store-related question.",
-        "created_at": "2026-10-29T12:38:48.843150Z"
-      }
-    ],
-    "first_user_message": null,
-    "last_order_id": "ORD-1002",
-    "created_at": "2026-10-29T12:34:58.462810Z",
-    "updated_at": "2026-10-29T12:38:48.843264Z",
-    "expires_at": "2026-10-29T13:08:48.843264Z"
-  },
-  {
     "conversation_id": "751976e4-e879-4b9e-91ae-dfde44e0ebb9",
     "owner_id": "CUS-DEMO-002",
     "turns": [
@@ -134,5 +83,95 @@
     "created_at": "2026-10-29T12:59:24.891242Z",
     "updated_at": "2026-10-29T13:05:27.843093Z",
     "expires_at": "2026-10-29T13:35:27.843093Z"
+  },
+  {
+    "conversation_id": "b1711bb5-9bd2-4aff-b57c-05b68f5ff5e4",
+    "owner_id": "CUS-DEMO-002",
+    "turns": [
+      {
+        "role": "user",
+        "text": "Hi how are you?",
+        "created_at": "2026-10-29T13:22:00.515796Z"
+      },
+      {
+        "role": "assistant",
+        "text": "Hi! I can help with orders, deliveries, payments, returns, products, or store policies. What can I help you with?",
+        "created_at": "2026-10-29T13:22:00.515796Z"
+      },
+      {
+        "role": "user",
+        "text": "i need to check the status of my order ORD-1002",
+        "created_at": "2026-10-29T13:22:53.361536Z"
+      },
+      {
+        "role": "assistant",
+        "text": "Order ORD-1002 is currently shipped.",
+        "created_at": "2026-10-29T13:22:53.361536Z"
+      },
+      {
+        "role": "user",
+        "text": "Okay wht is the pyment info for that",
+        "created_at": "2026-10-29T13:23:14.275122Z"
+      },
+      {
+        "role": "assistant",
+        "text": "Payment PAY-1002 is failed (code: DEMO_PAYMENT_DECLINED)",
+        "created_at": "2026-10-29T13:23:14.275122Z"
+      },
+      {
+        "role": "user",
+        "text": "okay thank you",
+        "created_at": "2026-10-29T13:24:16.741664Z"
+      },
+      {
+        "role": "assistant",
+        "text": "You’re very welcome! I’m glad I could help. If another store-related question comes up, just let me know.",
+        "created_at": "2026-10-29T13:24:16.741664Z"
+      }
+    ],
+    "first_user_message": {
+      "role": "user",
+      "text": "Hi how are you?",
+      "created_at": "2026-10-29T13:22:00.515796Z"
+    },
+    "last_order_id": "ORD-1002",
+    "created_at": "2026-10-29T13:22:00.515796Z",
+    "updated_at": "2026-10-29T13:24:16.741759Z",
+    "expires_at": "2026-10-29T13:54:16.741759Z"
+  },
+  {
+    "conversation_id": "4a5e141d-d4e1-4409-bf0e-8bcb30f46cea",
+    "owner_id": "CUS-DEMO-002",
+    "turns": [
+      {
+        "role": "user",
+        "text": "I'm really frustrated about order ORD-1002. I expected it to arrive already, but I still haven't received it. Can you check its current delivery status, explain why it's delayed, tell me when I should expect it, and let me know what happens if it never arrives? Please don't give me generic answers.",
+        "created_at": "2026-10-29T13:31:11.989570Z"
+      },
+      {
+        "role": "assistant",
+        "text": "Shipment SHIP-1002 is delayed, estimated for 2026-10-26T18:00:00+00:00.\n\nPolicy information: {\n  \"action\": \"search\",\n  \"parameters\": {\n    \"query\": \"ORD-1002\"\n  }\n}",
+        "created_at": "2026-10-29T13:31:11.989570Z"
+      },
+      {
+        "role": "user",
+        "text": "I'm really frustrated about order ORD-1002. I expected it to arrive already, but I still haven't received it. Can you check its current delivery status, explain why it's delayed, tell me when I should expect it, and let me know what happens if it never arrives? Please don't give me generic answers.",
+        "created_at": "2026-10-29T13:32:16.744033Z"
+      },
+      {
+        "role": "assistant",
+        "text": "Shipment SHIP-1002 is delayed, estimated for 2026-10-26T18:00:00+00:00.\n\nPolicy information: I couldn’t verify a reliable answer against the approved policy information, so I’m escalating this to our support team.\n\nI’ve created support ticket SUP-DA64DC591596 for follow-up.",
+        "created_at": "2026-10-29T13:32:16.744033Z"
+      }
+    ],
+    "first_user_message": {
+      "role": "user",
+      "text": "I'm really frustrated about order ORD-1002. I expected it to arrive already, but I still haven't received it. Can you check its current delivery status, explain why it's delayed, tell me when I should expect it, and let me know what happens if it never arrives? Please don't give me generic answers.",
+      "created_at": "2026-10-29T13:31:11.989570Z"
+    },
+    "last_order_id": "ORD-1002",
+    "created_at": "2026-10-29T13:31:11.989570Z",
+    "updated_at": "2026-10-29T13:32:16.744252Z",
+    "expires_at": "2026-10-29T14:02:16.744252Z"
   }
 ]

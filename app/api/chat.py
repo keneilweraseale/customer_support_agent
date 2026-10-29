@@ -18,6 +18,7 @@ from app.agent.router import (
     ESCALATION_WORDS,
     OrchestratedChatResult,
     ORDER_ID_PATTERN,
+    GOODBYE_MESSAGE_PATTERN,
     build_default_orchestrator,
     classify_message,
     classify_message_with_intent,
@@ -264,7 +265,44 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 detail="Your session is missing or expired. Please sign in again.",
             )
 
-    if decision.route == ChatRoute.CONVERSATION_RECALL:
+    if decision.route == ChatRoute.CLOSING:
+        ticket = None
+        if customer_id is not None:
+            try:
+                ticket = await run_in_threadpool(
+                    support_repository.get_latest_support_ticket_for_conversation,
+                    conversation_id,
+                    customer_id,
+                )
+            except DataStoreError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Support ticket information is temporarily unavailable.",
+                ) from exc
+        if ticket is not None:
+            answer = (
+                f"You’re very welcome! Your support ticket {ticket.ticket_id} "
+                "is still open. You can add any other details using its ticket "
+                "form in this conversation. Take care, and you’re welcome back "
+                "anytime."
+            )
+        elif GOODBYE_MESSAGE_PATTERN.search(request.message):
+            answer = (
+                "Bye for now! Thanks for chatting with us—have a lovely day. "
+                "You’re welcome back anytime."
+            )
+        else:
+            answer = (
+                "You’re very welcome! I’m glad I could help. If another "
+                "store-related question comes up, just let me know."
+            )
+        result = OrchestratedChatResult(
+            answer=answer,
+            route=ChatRoute.CLOSING,
+            sources=[],
+            actions=[],
+        )
+    elif decision.route == ChatRoute.CONVERSATION_RECALL:
         result = OrchestratedChatResult(
             answer=conversation_memory_service.answer_recall(
                 request.message,

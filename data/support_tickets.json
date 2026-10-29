@@ -182,5 +182,13 @@
     "customer_id": "CUS-DEMO-002",
     "status": "open",
     "created_at": "2026-10-29T13:03:34.607136Z"
+  },
+  {
+    "ticket_id": "SUP-DA64DC591596",
+    "conversation_id": "4a5e141d-d4e1-4409-bf0e-8bcb30f46cea",
+    "customer_message": "I'm really frustrated about order ORD-1002. I expected it to arrive already, but I still haven't received it. Can you check its current delivery status, explain why it's delayed, tell me when I should expect it, and let me know what happens if it never arrives? Please don't give me generic answers.",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-29T13:32:16.725333Z"
   }
 ]

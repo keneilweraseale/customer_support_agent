@@ -57,6 +57,22 @@ CANCEL_ACTION_PATTERN = re.compile(
     r"\b(cancel|canceled|cancelled|canceling|cancelling)\b",
     re.IGNORECASE,
 )
+CLOSING_MESSAGE_PATTERN = re.compile(
+    r"^(?:"
+    r"(?:thank\s+you|thanks?)(?:\s+(?:so much|very much|a lot|again|"
+    r"for (?:your )?(?:help|support|everything|that)))?"
+    r"|bye(?:\s+bye)?|goodbye|see you(?:\s+(?:later|soon|next time))?"
+    r"|take care|have a (?:nice|great|good|lovely) day"
+    r")(?:[\s,!.]+(?:bye(?:\s+bye)?|goodbye|see you(?:\s+(?:later|soon|"
+    r"next time))?|take care|have a (?:nice|great|good|lovely) day))?"
+    r"[\s,!.]*$",
+    re.IGNORECASE,
+)
+GOODBYE_MESSAGE_PATTERN = re.compile(
+    r"\b(?:bye(?:\s+bye)?|goodbye|see you|take care|have a "
+    r"(?:nice|great|good|lovely) day)\b",
+    re.IGNORECASE,
+)
 
 
 class ChatRoute(str, Enum):
@@ -73,6 +89,7 @@ class ChatRoute(str, Enum):
     BILLING_ISSUE = "billing_issue"
     SUPPORT_TICKET_MESSAGE = "support_ticket_message"
     CONVERSATION_RECALL = "conversation_recall"
+    CLOSING = "closing"
     OUT_OF_SCOPE = "out_of_scope"
     GREETING = "greeting"
 
@@ -1049,11 +1066,22 @@ def classify_message_with_intent(
         "reviews": ChatRoute.REVIEWS,
         "support_ticket_message": ChatRoute.SUPPORT_TICKET_MESSAGE,
         "conversation_recall": ChatRoute.CONVERSATION_RECALL,
+        "closing": ChatRoute.CLOSING,
         "clarification": ChatRoute.CLARIFICATION,
         "out_of_scope": ChatRoute.OUT_OF_SCOPE,
     }
     product_match = PRODUCT_ID_PATTERN.search(message)
     routes = tuple(dict.fromkeys(route_by_intent[intent] for intent in intents))
+    if (
+        ChatRoute.CLOSING in routes
+        and decision.route
+        not in {
+            ChatRoute.OUT_OF_SCOPE,
+            ChatRoute.CLARIFICATION,
+            ChatRoute.GREETING,
+        }
+    ):
+        return decision
     return RouteDecision(
         route=routes[0],
         order_id=next(iter(order_ids), None),
@@ -1064,6 +1092,9 @@ def classify_message_with_intent(
 
 def classify_message(message: str) -> RouteDecision:
     normalized = message.casefold()
+    if CLOSING_MESSAGE_PATTERN.fullmatch(message.strip()):
+        return RouteDecision(ChatRoute.CLOSING)
+
     if re.search(
         r"\b(?:remember|recall)\b.{0,40}\b(?:what|first|earlier|"
         r"message|text|said|sent|asked)\b"

@@ -87,3 +87,11 @@ def test_intent_classifier_accepts_conversation_recall() -> None:
     assert classifier.classify(
         "Do you remember the first text I sent to you?"
     ) == ["conversation_recall"]
+
+
+def test_intent_classifier_accepts_closing_intent() -> None:
+    classifier, _ = make_classifier('{"intents":["closing"]}')
+
+    assert classifier.classify("Much appreciated, that's all for today.") == [
+        "closing"
+    ]

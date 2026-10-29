@@ -77,6 +77,9 @@ This repository implements the customer-support agent described in
   investigation is needed. The assistant does not claim that a refund was
   issued or that a human was contacted; tickets are local demo records and the
   signed-in customer can send further details directly to support by email.
+- **Conversation closing:** Brief thank-yous and goodbyes receive a warm,
+  natural closing. If the same conversation has an open support ticket, the
+  response reminds the customer it remains open without claiming it was resolved.
 
 Phase 2 tools are available through chat routing but are not separate HTTP
 endpoints apart from cancellation confirmation. Customers sign in with their

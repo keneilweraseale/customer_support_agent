@@ -166,6 +166,12 @@ def test_classifier_selects_supported_route_types() -> None:
     )
     assert classify_message("What is the capital of France?").route == ChatRoute.OUT_OF_SCOPE
     assert classify_message("Hello there!").route == ChatRoute.GREETING
+    assert classify_message("Thank you").route == ChatRoute.CLOSING
+    assert classify_message("Bye bye, have a nice day").route == ChatRoute.CLOSING
+    assert (
+        classify_message("Thank you, can you track order ORD-1001?").route
+        == ChatRoute.DELIVERY
+    )
     assert (
         classify_message("Do you remember the first text I sent to you?").route
         == ChatRoute.CONVERSATION_RECALL
@@ -243,6 +249,20 @@ def test_model_intent_can_route_conversation_recall() -> None:
     )
 
     assert decision.route == ChatRoute.CONVERSATION_RECALL
+
+
+def test_model_intent_can_route_non_literal_conversational_closings() -> None:
+    class FakeClassifier:
+        def classify(self, message, conversation_context=None):
+            del message, conversation_context
+            return ["closing"]
+
+    decision = classify_message_with_intent(
+        "Much appreciated, that's all for today.",
+        FakeClassifier(),
+    )
+
+    assert decision.route == ChatRoute.CLOSING
 
 
 def test_unrelated_question_gets_friendly_scope_response_without_rag() -> None:

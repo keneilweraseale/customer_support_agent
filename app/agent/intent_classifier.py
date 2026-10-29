@@ -20,6 +20,7 @@ SUPPORTED_INTENTS = frozenset(
     {
         "billing_issue",
         "cancellation",
+        "closing",
         "conversation_recall",
         "delivery",
         "greeting",
@@ -88,6 +89,10 @@ class GroqIntentClassifier:
                             "Use `conversation_recall` when the customer asks "
                             "what they said, asked, or shared earlier in this "
                             "same conversation. "
+                            "Use `closing` when the customer is only thanking "
+                            "the assistant or ending the conversation. Do not "
+                            "classify a message as `closing` if it also asks "
+                            "for help with a support task. "
                             "Use `billing_issue` for a disputed, unexpected, or "
                             "failed payment charge, or when the customer asks "
                             "why order, delivery, and payment records appear to "
@@ -137,7 +142,7 @@ class GroqIntentClassifier:
                 and any(
                     intent in {"cancellation", "billing_issue", "clarification",
                                "out_of_scope", "greeting", "support_ticket_message",
-                               "conversation_recall"}
+                               "conversation_recall", "closing"}
                     for intent in intents
                 )
             )

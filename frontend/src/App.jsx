@@ -50,6 +50,7 @@ function routeStatus(route) {
     rag_and_tool: "Policy and product information retrieved",
     multi: "Requested information retrieved",
     conversation_recall: "Earlier conversation recalled",
+    closing: "Conversation closed",
     cancellation_check: "Cancellation eligibility checked",
     clarification: "More information needed",
     support_ticket_message: "Support ticket follow-up",

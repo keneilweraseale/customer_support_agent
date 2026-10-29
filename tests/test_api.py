@@ -692,6 +692,58 @@ def test_chat_recalls_first_message_and_restores_owner_scoped_history(
     assert unauthenticated.status_code == 401
 
 
+def test_chat_closes_warmly_and_reminds_customer_of_open_ticket(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from datetime import datetime, timezone
+
+    from app.storage.json_store import JsonRepository
+    from app.storage.models import SupportTicket
+
+    repository = JsonRepository(tmp_path)
+    monkeypatch.setattr(chat_api, "support_repository", repository)
+    monkeypatch.setattr(chat_api, "orchestrator", build_default_orchestrator())
+    token = issue_authorization_token("CUS-DEMO-001")
+
+    thank_you = client.post(
+        "/api/chat",
+        json={
+            "message": "Thank you",
+            "conversation_id": "warm-close-no-ticket",
+            "authorization_token": token,
+        },
+    )
+    assert thank_you.status_code == 200
+    assert thank_you.json()["route"] == "closing"
+    assert "You’re very welcome!" in thank_you.json()["answer"]
+    assert "glad I could help" in thank_you.json()["answer"]
+
+    repository.append_support_ticket(
+        SupportTicket(
+            ticket_id="SUP-OPEN-123",
+            conversation_id="warm-close-open-ticket",
+            customer_id="CUS-DEMO-001",
+            customer_message="My parcel has not arrived.",
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    goodbye = client.post(
+        "/api/chat",
+        json={
+            "message": "Bye bye",
+            "conversation_id": "warm-close-open-ticket",
+            "authorization_token": token,
+        },
+    )
+
+    assert goodbye.status_code == 200
+    assert goodbye.json()["route"] == "closing"
+    assert "support ticket SUP-OPEN-123 is still open" in goodbye.json()["answer"]
+    assert "Take care" in goodbye.json()["answer"]
+    assert goodbye.json()["actions"] == []
+
+
 def test_chat_uses_model_intent_for_typos_and_natural_greetings(monkeypatch) -> None:
     class FakeIntentClassifier:
         calls = []
