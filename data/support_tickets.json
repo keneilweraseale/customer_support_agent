@@ -126,5 +126,13 @@
     "customer_id": "CUS-DEMO-002",
     "status": "open",
     "created_at": "2026-10-28T09:53:46.393996Z"
+  },
+  {
+    "ticket_id": "SUP-FE48B834F382",
+    "conversation_id": "15b5f3fd-6275-420d-bc77-450f31c5c638",
+    "customer_message": "Contact support",
+    "customer_id": "CUS-DEMO-001",
+    "status": "open",
+    "created_at": "2026-10-29T07:13:46.615229Z"
   }
 ]

@@ -1,7 +1,3 @@
-<<<<<<< Updated upstream
-import { useEffect, useRef, useState } from "react";
-=======
->>>>>>> Stashed changes
 
 import { useEffect, useRef } from "react";
 import CancellationConfirmation from "./CancellationConfirmation.jsx";
@@ -55,14 +51,9 @@ export default function MessageList({
                 (action) => action.type === "support_ticket"
               ) && (
                 <SupportTicketActions
-<<<<<<< Updated upstream
-                  action={message.actions.find((item) => item.type === "support_ticket")}
-                  onSubmit={onSupportTicketMessage}
-=======
                   action={message.actions.find(
                     (item) => item.type === "support_ticket"
                   )}
->>>>>>> Stashed changes
                 />
               )}
 
@@ -197,63 +188,6 @@ const quickActions = [
   "Contact support",
 ];
 
-<<<<<<< Updated upstream
-function SupportTicketActions({ action, onSubmit }) {
-  const [message, setMessage] = useState("");
-  const [status, setStatus] = useState("");
-  const [isSending, setIsSending] = useState(false);
-
-  async function submit(event) {
-    event.preventDefault();
-    const messageText = message.trim();
-    if (!messageText || isSending) return;
-    setIsSending(true);
-    setStatus("");
-    try {
-      await onSubmit(action.ticket_id, messageText);
-      setMessage("");
-      setStatus("Your message was sent to our support team.");
-    } catch (error) {
-      setStatus(error.message);
-    } finally {
-      setIsSending(false);
-    }
-  }
-
-  return (
-    <section aria-label="Contact human support" style={styles.supportActions}>
-      <strong>Ticket {action.ticket_id}</strong>
-      <p style={styles.supportDescription}>
-        Tell us more about the problem and we’ll send it directly to our support team.
-      </p>
-      <form onSubmit={submit} style={styles.supportForm}>
-        <label htmlFor={`support-message-${action.ticket_id}`} style={styles.supportLabel}>
-          Your message
-        </label>
-        <textarea
-          id={`support-message-${action.ticket_id}`}
-          maxLength={2000}
-          onChange={(event) => setMessage(event.target.value)}
-          required
-          rows={4}
-          style={styles.supportInput}
-          value={message}
-        />
-        <button
-          disabled={!message.trim() || isSending}
-          style={styles.supportButton}
-          type="submit"
-        >
-          {isSending ? "Sending…" : "Send to support"}
-        </button>
-      </form>
-      {status && <p aria-live="polite" role="status" style={styles.supportStatus}>{status}</p>}
-    </section>
-  );
-}
-
-=======
->>>>>>> Stashed changes
 const styles = {
   scroller: {
     flex: 1,
@@ -331,44 +265,12 @@ const styles = {
     marginTop: 12,
     paddingTop: 10,
   },
-<<<<<<< Updated upstream
-  supportDescription: { color: "#64748B", lineHeight: 1.5, margin: "6px 0 10px" },
-  supportForm: { display: "flex", flexDirection: "column", gap: 8 },
-  supportLabel: { color: "#475569", fontWeight: 600 },
-  supportInput: {
-    border: "1px solid #CBD5E1",
-    borderRadius: 8,
-    boxSizing: "border-box",
-    color: "#1F2937",
-    font: "inherit",
-    minHeight: 86,
-    padding: "9px 10px",
-    resize: "vertical",
-    width: "100%",
-  },
-  supportButton: {
-    alignSelf: "flex-start",
-    background: "#1D4ED8",
-    border: 0,
-    borderRadius: 8,
-    color: "#FFFFFF",
-    cursor: "pointer",
-    font: "inherit",
-    fontWeight: 600,
-    padding: "9px 13px",
-  },
-  supportStatus: {
-    color: "#0F766E",
-    lineHeight: 1.5,
-    margin: "9px 0 0",
-=======
 
   quickActions: {
     display: "flex",
     flexWrap: "wrap",
     gap: 9,
     margin: "18px 0 24px",
->>>>>>> Stashed changes
   },
 
   chip: {
