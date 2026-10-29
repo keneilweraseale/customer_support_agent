@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import CancellationConfirmation from "./CancellationConfirmation.jsx";
 
@@ -24,7 +23,11 @@ export default function MessageList({
   }, [messages, isLoading]);
 
   return (
-    <div aria-label="Conversation" className="chat-scroller" style={styles.scroller}>
+    <div
+      aria-label="Conversation"
+      className="chat-scroller"
+      style={styles.scroller}
+    >
       <div
         aria-live="polite"
         aria-relevant="additions text"
@@ -54,13 +57,13 @@ export default function MessageList({
               {message.actions?.some(
                 (action) =>
                   action.type === "support_ticket" ||
-                  action.type === "support_ticket_message"
+                  action.type === "support_ticket_message",
               ) && (
                 <SupportTicketActions
                   action={message.actions.find(
                     (item) =>
                       item.type === "support_ticket" ||
-                      item.type === "support_ticket_message"
+                      item.type === "support_ticket_message",
                   )}
                   disabled={isLoading}
                   messageId={message.id}
@@ -85,7 +88,7 @@ export default function MessageList({
                     confirmationToken,
                     outcome,
                     reasonCode,
-                    reasonText
+                    reasonText,
                   ) =>
                     onCancellationDecision(
                       message.id,
@@ -94,28 +97,26 @@ export default function MessageList({
                       outcome,
                       reasonCode,
                       reasonText,
-                      message.actions?.[0]?.idempotency_key
+                      message.actions?.[0]?.idempotency_key,
                     )
                   }
                   onConfirm={(
                     orderId,
                     confirmationToken,
                     reasonCode,
-                    reasonText
+                    reasonText,
                   ) =>
                     onConfirmCancellation(
                       orderId,
                       confirmationToken,
                       message.actions?.[0]?.idempotency_key,
                       reasonCode,
-                      reasonText
+                      reasonText,
                     )
                   }
                   messageId={message.id}
                   orderId={message.actions?.[0]?.order_id}
-                  confirmationToken={
-                    message.actions?.[0]?.confirmation_token
-                  }
+                  confirmationToken={message.actions?.[0]?.confirmation_token}
                   disabled={isLoading}
                 />
               )}
@@ -124,15 +125,12 @@ export default function MessageList({
                 <div style={styles.status}>{message.status}</div>
               )}
 
-              {message.role === "assistant" &&
-                message.sources?.length > 0 && (
-                  <div style={styles.sources}>
-                    <strong>Sources:</strong>{" "}
-                    {message.sources
-                      .map((source) => source.title)
-                      .join(", ")}
-                  </div>
-                )}
+              {message.role === "assistant" && message.sources?.length > 0 && (
+                <div style={styles.sources}>
+                  <strong>Sources:</strong>{" "}
+                  {message.sources.map((source) => source.title).join(", ")}
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -180,11 +178,6 @@ export default function MessageList({
   );
 }
 
-function SupportTicketActions({ action, onSend }) {
-  const [message, setMessage] = useState("");
-  const [isSending, setIsSending] = useState(false);
-  const [error, setError] = useState("");
-  const [sent, setSent] = useState(false);
 function SupportTicketActions({ action, disabled, messageId, onSend }) {
   const [formOpen, setFormOpen] = useState(
     action.type === "support_ticket_message",
@@ -197,18 +190,6 @@ function SupportTicketActions({ action, disabled, messageId, onSend }) {
   async function submitMessage(event) {
     event.preventDefault();
     const text = message.trim();
-    if (!text || isSending) return;
-
-    setIsSending(true);
-    setError("");
-    try {
-      await onSend(action.ticket_id, text);
-      setMessage("");
-      setSent(true);
-    } catch (sendError) {
-      setError(sendError.message);
-    } finally {
-      setIsSending(false);
     if (!text || sending || disabled) return;
     setSending(true);
     setError("");
@@ -225,48 +206,7 @@ function SupportTicketActions({ action, disabled, messageId, onSend }) {
   }
 
   return (
-    <section aria-label="Contact human support" style={styles.supportActions}>
-      <strong>Ticket {action.ticket_id}</strong>
-      <p style={styles.supportDescription}>
-        A ticket does not notify an agent yet. Send your message below to reach our support team.
-      </p>
-      <form className="ticket-message-form" onSubmit={submitMessage}>
-        <label htmlFor={`ticket-message-${action.ticket_id}`}>
-          Send more details
-        </label>
-        <textarea
-          disabled={isSending}
-          id={`ticket-message-${action.ticket_id}`}
-          maxLength={2000}
-          onChange={(event) => {
-            setMessage(event.target.value);
-            setSent(false);
-          }}
-          placeholder="Describe what you still need help with"
-          value={message}
-        />
-        {error && (
-          <p className="ticket-message-error" role="alert">
-            {error}
-          </p>
-        )}
-        {sent && (
-          <p className="ticket-message-success" role="status">
-            Your message was sent to support.
-          </p>
-        )}
-        <button
-          className="ticket-message-submit"
-          disabled={!message.trim() || isSending}
-          type="submit"
-        >
-          {isSending ? "Sending…" : "Send to support"}
-        </button>
-      </form>
-    <section
-      aria-label="Support ticket"
-      style={styles.supportActions}
-    >
+    <section aria-label="Support ticket" style={styles.supportActions}>
       <strong>Support ticket: {action.ticket_id}</strong>
       <p style={{ margin: "8px 0 0" }}>
         {sent
@@ -320,7 +260,10 @@ const quickActions = [
   { label: "Delivery help", prompt: "I have a delivery issue" },
   { label: "Payment issue", prompt: "I have a payment issue" },
   { label: "Find a product", prompt: "I need help finding a product" },
-  { label: "Returns & refunds", prompt: "What is your returns and refunds policy?" },
+  {
+    label: "Returns & refunds",
+    prompt: "What is your returns and refunds policy?",
+  },
   { label: "Warranty", prompt: "What is your warranty policy?" },
   { label: "Report Damaged Item", prompt: "Report Damaged Item" },
   { label: "Contact support", prompt: "I want to contact support" },
@@ -356,7 +299,8 @@ const styles = {
   },
 
   userBubble: {
-    background: "linear-gradient(145deg, var(--color-primary), var(--color-primary-dark))",
+    background:
+      "linear-gradient(145deg, var(--color-primary), var(--color-primary-dark))",
     borderBottomRightRadius: 6,
     color: "#FFFFFF",
     boxShadow: "0 6px 16px rgba(22, 139, 126, .13)",

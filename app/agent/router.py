@@ -104,7 +104,6 @@ class ChatRoute(str, Enum):
     PRODUCT = "product_tool"
     REVIEWS = "review_tool"
     MIXED = "rag_and_tool"
-    MULTI = "multi_tool"
     CANCELLATION = "cancellation_check"
     CLARIFICATION = "clarification"
     BILLING_ISSUE = "billing_issue"

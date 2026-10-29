@@ -211,10 +211,6 @@ class JsonRepository(SupportRepository):
         self,
         ticket: SupportTicket,
         expected_status: SupportTicketStatus,
-    def get_latest_support_ticket_for_conversation(
-        self,
-        conversation_id: str,
-        customer_id: str,
     ) -> SupportTicket | None:
         with self._write_lock:
             tickets = self._read_optional_records(
@@ -242,6 +238,18 @@ class JsonRepository(SupportRepository):
             tickets[ticket_index] = ticket
             self._write_records("support_tickets.json", tickets)
             return ticket
+
+    def get_latest_support_ticket_for_conversation(
+        self,
+        conversation_id: str,
+        customer_id: str,
+    ) -> SupportTicket | None:
+        with self._write_lock:
+            tickets = self._read_optional_records(
+                "support_tickets.json",
+                SupportTicket,
+                "ticket_id",
+            )
             matching_tickets = [
                 ticket
                 for ticket in tickets

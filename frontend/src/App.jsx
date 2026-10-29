@@ -27,7 +27,11 @@ function createConversationId() {
 }
 
 function getConversationId() {
-  return sessionStorage.getItem(conversationStorageKey) || createConversationId();
+  return (
+    sessionStorage.getItem(conversationStorageKey) || createConversationId()
+  );
+}
+
 function getOrCreateConversationId() {
   const existing = globalThis.sessionStorage?.getItem(CONVERSATION_STORAGE_KEY);
   if (existing) return existing;
@@ -45,28 +49,29 @@ function createMessageId() {
 }
 
 function routeStatus(route) {
-  return {
-    rag: "Policy information retrieved",
-    order_tool: "Order information retrieved",
-    delivery_tool: "Delivery information retrieved",
-    payment_tool: "Payment information retrieved",
-    product_tool: "Product information retrieved",
-    review_tool: "Review information retrieved",
-    rag_and_tool: "Policy and product information retrieved",
-    multi: "Requested information retrieved",
-    conversation_recall: "Earlier conversation recalled",
-    closing: "Conversation closed",
-    cancellation_check: "Cancellation eligibility checked",
-    ticket_lookup: "Ticket information retrieved",
-    clarification: "More information needed",
-    conversation_memory: "Earlier conversation recalled",
-    support_ticket_message: "Support ticket follow-up",
-  }[route] ?? "Support information retrieved";
+  return (
+    {
+      rag: "Policy information retrieved",
+      order_tool: "Order information retrieved",
+      delivery_tool: "Delivery information retrieved",
+      payment_tool: "Payment information retrieved",
+      product_tool: "Product information retrieved",
+      review_tool: "Review information retrieved",
+      rag_and_tool: "Policy and product information retrieved",
+      multi: "Requested information retrieved",
+      conversation_recall: "Earlier conversation recalled",
+      closing: "Conversation closed",
+      cancellation_check: "Cancellation eligibility checked",
+      ticket_lookup: "Ticket information retrieved",
+      clarification: "More information needed",
+      conversation_memory: "Earlier conversation recalled",
+      support_ticket_message: "Support ticket follow-up",
+    }[route] ?? "Support information retrieved"
+  );
 }
 
 export default function App() {
   const [conversationId, setConversationId] = useState(getConversationId);
-  const [conversationId, setConversationId] = useState(getOrCreateConversationId);
   const [messages, setMessages] = useState([welcomeMessage]);
   const [draft, setDraft] = useState("");
   const [email, setEmail] = useState("");
@@ -366,7 +371,9 @@ export default function App() {
   }
 
   return (
-    <div className={`app-shell${authorizationToken ? "" : " app-shell-public"}`}>
+    <div
+      className={`app-shell${authorizationToken ? "" : " app-shell-public"}`}
+    >
       {authorizationToken && (
         <>
           <ChatHeader
@@ -397,18 +404,24 @@ export default function App() {
           )}
         </>
       )}
-      <main className={`workspace${authorizationToken ? "" : " workspace-public"}`}>
+      <main
+        className={`workspace${authorizationToken ? "" : " workspace-public"}`}
+      >
         <section
           aria-label={
             isDamageReportOpen
               ? "Report a damaged item"
               : isTicketTrackingOpen
                 ? "My support tickets"
-              : authorizationToken
-                ? "Customer support chat"
-                : "Sign in to customer support"
+                : authorizationToken
+                  ? "Customer support chat"
+                  : "Sign in to customer support"
           }
-          className={authorizationToken ? "chat-panel authenticated-panel" : "chat-panel sign-in-panel"}
+          className={
+            authorizationToken
+              ? "chat-panel authenticated-panel"
+              : "chat-panel sign-in-panel"
+          }
           style={{
             ...styles.panel,
             ...(!authorizationToken ? styles.publicPanel : {}),
@@ -418,7 +431,9 @@ export default function App() {
             <button
               aria-controls="primary-sidebar"
               aria-expanded={isSidebarOpen}
-              aria-label={isSidebarOpen ? "Close navigation" : "Open navigation"}
+              aria-label={
+                isSidebarOpen ? "Close navigation" : "Open navigation"
+              }
               className="mobile-menu-toggle"
               onClick={() => setIsSidebarOpen((open) => !open)}
               type="button"
@@ -433,12 +448,20 @@ export default function App() {
                 viewBox="0 0 24 24"
                 width="21"
               >
-                {isSidebarOpen ? <path d="m6 6 12 12M18 6 6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+                {isSidebarOpen ? (
+                  <path d="m6 6 12 12M18 6 6 18" />
+                ) : (
+                  <path d="M4 7h16M4 12h16M4 17h16" />
+                )}
               </svg>
             </button>
           )}
           {!authorizationToken ? (
-            <form className="login-form" onSubmit={signIn} style={styles.loginForm}>
+            <form
+              className="login-form"
+              onSubmit={signIn}
+              style={styles.loginForm}
+            >
               <div aria-hidden="true" style={styles.loginIllustration}>
                 <span>✦</span>
               </div>
@@ -447,7 +470,9 @@ export default function App() {
               <p style={styles.loginDescription}>
                 Sign in to get help with orders, deliveries, payments, and more.
               </p>
-              <label htmlFor="customer-email" style={styles.loginLabel}>Email</label>
+              <label htmlFor="customer-email" style={styles.loginLabel}>
+                Email
+              </label>
               <input
                 autoComplete="username"
                 aria-describedby={loginMessage ? "login-error" : undefined}
@@ -462,7 +487,9 @@ export default function App() {
                 type="email"
                 value={email}
               />
-              <label htmlFor="customer-password" style={styles.loginLabel}>Password</label>
+              <label htmlFor="customer-password" style={styles.loginLabel}>
+                Password
+              </label>
               <div className="password-field">
                 <input
                   autoComplete="current-password"
@@ -479,7 +506,9 @@ export default function App() {
                   value={password}
                 />
                 <button
-                  aria-label={isPasswordVisible ? "Hide password" : "Show password"}
+                  aria-label={
+                    isPasswordVisible ? "Hide password" : "Show password"
+                  }
                   aria-pressed={isPasswordVisible}
                   className="password-toggle"
                   onClick={() => setIsPasswordVisible((visible) => !visible)}
@@ -494,10 +523,27 @@ export default function App() {
                 style={styles.loginButton}
                 type="submit"
               >
-                {isSigningIn ? "Signing in…" : <>Sign in <span aria-hidden="true">→</span></>}
+                {isSigningIn ? (
+                  "Signing in…"
+                ) : (
+                  <>
+                    Sign in <span aria-hidden="true">→</span>
+                  </>
+                )}
               </button>
-              {loginMessage && <p aria-live="polite" id="login-error" role="alert" style={styles.loginError}>{loginMessage}</p>}
-              <p style={styles.loginPrivacy}>🔒 Your account details stay private and secure.</p>
+              {loginMessage && (
+                <p
+                  aria-live="polite"
+                  id="login-error"
+                  role="alert"
+                  style={styles.loginError}
+                >
+                  {loginMessage}
+                </p>
+              )}
+              <p style={styles.loginPrivacy}>
+                🔒 Your account details stay private and secure.
+              </p>
             </form>
           ) : (
             <>
@@ -535,7 +581,8 @@ export default function App() {
                       value={draft}
                     />
                     <p style={styles.privacy}>
-                      For your safety, don’t share passwords or full payment-card details.
+                      For your safety, don’t share passwords or full
+                      payment-card details.
                     </p>
                   </footer>
                 </>
@@ -603,9 +650,26 @@ const styles = {
     margin: "0 0 9px",
     textAlign: "center",
   },
-  loginTitle: { color: "var(--color-ink)", fontSize: 29, letterSpacing: "-0.04em", margin: "0 0 9px", textAlign: "center" },
-  loginDescription: { color: "var(--color-muted)", fontSize: 14, lineHeight: 1.65, margin: "0 0 26px", textAlign: "center" },
-  loginLabel: { color: "var(--color-text)", fontSize: 12, fontWeight: 700, margin: "0 0 7px" },
+  loginTitle: {
+    color: "var(--color-ink)",
+    fontSize: 29,
+    letterSpacing: "-0.04em",
+    margin: "0 0 9px",
+    textAlign: "center",
+  },
+  loginDescription: {
+    color: "var(--color-muted)",
+    fontSize: 14,
+    lineHeight: 1.65,
+    margin: "0 0 26px",
+    textAlign: "center",
+  },
+  loginLabel: {
+    color: "var(--color-text)",
+    fontSize: 12,
+    fontWeight: 700,
+    margin: "0 0 7px",
+  },
   loginInput: {
     background: "var(--color-surface)",
     border: "1px solid var(--color-border)",
@@ -619,7 +683,8 @@ const styles = {
   },
   loginButton: {
     alignItems: "center",
-    background: "linear-gradient(135deg, var(--color-primary), var(--color-primary-dark))",
+    background:
+      "linear-gradient(135deg, var(--color-primary), var(--color-primary-dark))",
     border: 0,
     borderRadius: 12,
     color: "#FFFFFF",
@@ -631,7 +696,21 @@ const styles = {
     marginTop: 6,
     padding: "14px 16px",
   },
-  loginError: { color: "var(--color-danger)", fontSize: 13, margin: "14px 0 0" },
-  loginPrivacy: { color: "#8a9a9c", fontSize: 11, margin: "22px 0 0", textAlign: "center" },
-  privacy: { color: "#8a9a9c", fontSize: 11, margin: "10px 2px 0", textAlign: "center" },
+  loginError: {
+    color: "var(--color-danger)",
+    fontSize: 13,
+    margin: "14px 0 0",
+  },
+  loginPrivacy: {
+    color: "#8a9a9c",
+    fontSize: 11,
+    margin: "22px 0 0",
+    textAlign: "center",
+  },
+  privacy: {
+    color: "#8a9a9c",
+    fontSize: 11,
+    margin: "10px 2px 0",
+    textAlign: "center",
+  },
 };

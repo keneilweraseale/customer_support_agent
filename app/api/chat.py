@@ -319,7 +319,6 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
                 long_term_record_created=False,
             ),
         )
-    if decision.route in {
     requires_authentication = decision.route in {
         ChatRoute.ORDER,
         ChatRoute.DELIVERY,
@@ -327,13 +326,6 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
         ChatRoute.MULTI,
         ChatRoute.CANCELLATION,
         ChatRoute.BILLING_ISSUE,
-    }:
-        if request.authorization_token is None:
-            raise HTTPException(
-                status_code=401,
-                detail="Sign in before asking about your orders.",
-            )
-        if customer_id is None:
         ChatRoute.CONVERSATION_RECALL,
     }
     if requires_authentication and request.authorization_token is None:
@@ -429,29 +421,6 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
             not requests_order_search(request.message)
             or requests_other_order(request.message)
         )
-    )
-    if is_conversation_recall_request(request.message):
-        memory_context_used = memory is not None and bool(memory.turns)
-        result = OrchestratedChatResult(
-            answer=format_conversation_recall(memory.turns if memory else []),
-            route=ChatRoute.CONVERSATION_MEMORY,
-            sources=[],
-            actions=[],
-        )
-    else:
-        try:
-            result = await run_in_threadpool(
-                orchestrator.handle,
-                contextualized_message,
-                customer_id,
-                context_order_id,
-            )
-        and any(
-            route in private_order_routes
-            for route in (decision.route, *decision.additional_routes)
-        )
-        and decision.order_id is None
-        and not requests_order_search(request.message)
     )
     ticket_follow_up = (
         decision.route == ChatRoute.SUPPORT_TICKET_MESSAGE

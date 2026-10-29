@@ -32,6 +32,7 @@ _CONVERSATION_RECALL_CUES = (
     "what did i ask",
     "what did i say",
     "what did we say",
+)
 _WORD = re.compile(r"\b[a-z0-9]{3,}\b")
 _FIRST_MESSAGE_REQUEST = re.compile(
     r"\b(?:first|initial|earliest|original)\b.{0,50}"
