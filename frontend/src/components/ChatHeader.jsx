@@ -1,4 +1,10 @@
-export default function ChatHeader({ authenticated, disabled, onLogout, onNewChat }) {
+export default function ChatHeader({
+  authenticated,
+  disabled,
+  onLogout,
+  onNewChat,
+  onDamageReport,
+}) {
   return (
     <header style={styles.header}>
       <div style={styles.brand}>

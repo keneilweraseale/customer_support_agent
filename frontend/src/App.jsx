@@ -7,6 +7,7 @@ import {
   sendChatMessage,
   sendSupportTicketMessage,
 } from "./api.js";
+import DamageReport from "./components/DamageReport.jsx";
 import ChatComposer from "./components/ChatComposer.jsx";
 import ChatHeader from "./components/ChatHeader.jsx";
 import MessageList from "./components/MessageList.jsx";
@@ -56,6 +57,7 @@ export default function App() {
   const [loginMessage, setLoginMessage] = useState("");
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDamageReportOpen, setIsDamageReportOpen] = useState(false);
 
   async function signIn(event) {
     event.preventDefault();
@@ -144,6 +146,14 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  function handleQuickAction(action) {
+    if (action === "Report Damaged Item") {
+      setIsDamageReportOpen(true);
+      return;
+    }
+    void submitMessage(action);
   }
 
   function startNewChat() {
@@ -310,6 +320,7 @@ export default function App() {
           <ChatHeader
             authenticated={Boolean(authorizationToken)}
             disabled={isLoading}
+            onDamageReport={() => setIsDamageReportOpen(true)}
             onLogout={signOut}
             onNewChat={startNewChat}
           />
@@ -377,26 +388,35 @@ export default function App() {
             </form>
           ) : (
             <>
-              <MessageList
-                isLoading={isLoading}
-                messages={messages.filter((message) => !message.pending)}
-                onCancellationDecision={recordCancellationDecision}
-                onConfirmCancellation={confirmCancellation}
-                onQuickAction={(action) => submitMessage(action)}
-                onRetry={(text) => submitMessage(text)}
-                onSupportTicketMessage={sendTicketMessage}
-              />
-              <footer style={styles.footer}>
-                <ChatComposer
-                  disabled={isLoading}
-                  onChange={setDraft}
-                  onSubmit={() => submitMessage()}
-                  value={draft}
+              {isDamageReportOpen ? (
+                <DamageReport
+                  authorizationToken={authorizationToken}
+                  onBack={() => setIsDamageReportOpen(false)}
                 />
-                <p style={styles.privacy}>
-                  For your safety, don’t share passwords or full payment-card details.
-                </p>
-              </footer>
+              ) : (
+                <>
+                  <MessageList
+                    isLoading={isLoading}
+                    messages={messages.filter((message) => !message.pending)}
+                    onCancellationDecision={recordCancellationDecision}
+                    onConfirmCancellation={confirmCancellation}
+                    onQuickAction={handleQuickAction}
+                    onRetry={(text) => submitMessage(text)}
+                    onSupportTicketMessage={sendTicketMessage}
+                  />
+                  <footer style={styles.footer}>
+                    <ChatComposer
+                      disabled={isLoading}
+                      onChange={setDraft}
+                      onSubmit={() => submitMessage()}
+                      value={draft}
+                    />
+                    <p style={styles.privacy}>
+                      For your safety, don’t share passwords or full payment-card details.
+                    </p>
+                  </footer>
+                </>
+              )}
             </>
           )}
         </section>
