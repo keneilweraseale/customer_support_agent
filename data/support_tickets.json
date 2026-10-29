@@ -134,5 +134,13 @@
     "customer_id": "CUS-DEMO-001",
     "status": "open",
     "created_at": "2026-10-29T07:13:46.615229Z"
+  },
+  {
+    "ticket_id": "SUP-CE6A4DB242DD",
+    "conversation_id": "7c1080db-eeaa-4a67-93e2-d9d78a26d724",
+    "customer_message": "What is your warranty policy?",
+    "customer_id": "CUS-DEMO-001",
+    "status": "open",
+    "created_at": "2026-10-29T08:18:09.319093Z"
   }
 ]

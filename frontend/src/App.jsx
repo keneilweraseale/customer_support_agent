@@ -45,6 +45,7 @@ export default function App() {
   const [draft, setDraft] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [authorizationToken, setAuthorizationToken] = useState("");
   const [loginMessage, setLoginMessage] = useState("");
   const [isSigningIn, setIsSigningIn] = useState(false);
@@ -59,6 +60,7 @@ export default function App() {
       const result = await sendLogin(email.trim(), password);
       setAuthorizationToken(result.authorization_token);
       setPassword("");
+      setIsPasswordVisible(false);
     } catch (error) {
       setLoginMessage(error.message);
     } finally {
@@ -214,11 +216,19 @@ export default function App() {
     if (!authorizationToken) {
       throw new Error("Your session has expired. Please sign in again.");
     }
-    await sendSupportTicketMessage({
-      ticketId,
-      message,
-      authorizationToken,
-    });
+    try {
+      await sendSupportTicketMessage({
+        ticketId,
+        message,
+        authorizationToken,
+      });
+    } catch (error) {
+      if (error.status === 401) {
+        setAuthorizationToken("");
+        setLoginMessage(error.message);
+      }
+      throw error;
+    }
   }
 
   async function recordCancellationDecision(
@@ -281,9 +291,12 @@ export default function App() {
 
   return (
     <>
-      <style>{responsiveStyles}</style>
       <main style={styles.page}>
-        <section aria-label="Customer support chat" style={styles.panel}>
+        <section
+          aria-label="Customer support chat"
+          className={authorizationToken ? "chat-panel authenticated-panel" : "chat-panel sign-in-panel"}
+          style={styles.panel}
+        >
           <ChatHeader
             authenticated={Boolean(authorizationToken)}
             disabled={isLoading}
@@ -291,39 +304,66 @@ export default function App() {
             onNewChat={startNewChat}
           />
           {!authorizationToken ? (
-            <form onSubmit={signIn} style={styles.loginForm}>
-              <h2 style={styles.loginTitle}>Sign in to customer support</h2>
+            <form className="login-form" onSubmit={signIn} style={styles.loginForm}>
+              <div aria-hidden="true" style={styles.loginIllustration}>
+                <span>✦</span>
+              </div>
+              <p style={styles.loginEyebrow}>PERSONALIZED SUPPORT</p>
+              <h2 style={styles.loginTitle}>How can we help?</h2>
               <p style={styles.loginDescription}>
-                Sign in to ask about your orders, deliveries, payments, or cancellations.
+                Sign in to get help with orders, deliveries, payments, and more.
               </p>
               <label htmlFor="customer-email" style={styles.loginLabel}>Email</label>
               <input
                 autoComplete="username"
+                aria-describedby={loginMessage ? "login-error" : undefined}
+                aria-invalid={loginMessage ? "true" : undefined}
                 id="customer-email"
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setLoginMessage("");
+                }}
                 required
                 style={styles.loginInput}
                 type="email"
                 value={email}
               />
               <label htmlFor="customer-password" style={styles.loginLabel}>Password</label>
-              <input
-                autoComplete="current-password"
-                id="customer-password"
-                onChange={(event) => setPassword(event.target.value)}
-                required
-                style={styles.loginInput}
-                type="password"
-                value={password}
-              />
+              <div className="password-field">
+                <input
+                  autoComplete="current-password"
+                  aria-describedby={loginMessage ? "login-error" : undefined}
+                  aria-invalid={loginMessage ? "true" : undefined}
+                  id="customer-password"
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    setLoginMessage("");
+                  }}
+                  required
+                  style={styles.loginInput}
+                  type={isPasswordVisible ? "text" : "password"}
+                  value={password}
+                />
+                <button
+                  aria-label={isPasswordVisible ? "Hide password" : "Show password"}
+                  aria-pressed={isPasswordVisible}
+                  className="password-toggle"
+                  onClick={() => setIsPasswordVisible((visible) => !visible)}
+                  type="button"
+                >
+                  {isPasswordVisible ? "Hide" : "Show"}
+                </button>
+              </div>
               <button
+                aria-busy={isSigningIn}
                 disabled={!email.trim() || !password || isSigningIn}
                 style={styles.loginButton}
                 type="submit"
               >
-                {isSigningIn ? "Signing in…" : "Sign in"}
+                {isSigningIn ? "Signing in…" : <>Sign in <span aria-hidden="true">→</span></>}
               </button>
-              {loginMessage && <p role="status" style={styles.loginError}>{loginMessage}</p>}
+              {loginMessage && <p aria-live="polite" id="login-error" role="alert" style={styles.loginError}>{loginMessage}</p>}
+              <p style={styles.loginPrivacy}>🔒 Your account details stay private and secure.</p>
             </form>
           ) : (
             <>
@@ -358,78 +398,92 @@ export default function App() {
 const styles = {
   page: {
     alignItems: "center",
-    background: "#F5F7FA",
+    background: "radial-gradient(ellipse at 50% 0%, var(--color-primary-soft) 0%, #f3f7f7 42%, var(--color-page) 100%)",
     boxSizing: "border-box",
     display: "flex",
-    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    fontFamily: "inherit",
     justifyContent: "center",
     minHeight: "100vh",
-    padding: 24,
+    padding: "32px 24px",
   },
   panel: {
-    background: "#FFFFFF",
-    border: "1px solid #E2E8F0",
-    borderRadius: 20,
-    boxShadow: "0 14px 45px rgba(15, 23, 42, 0.08)",
+    background: "#fbfdfd",
+    border: "1px solid rgba(222, 233, 232, 0.9)",
+    borderRadius: "var(--radius-card)",
+    boxShadow: "var(--shadow-card)",
     display: "flex",
     flexDirection: "column",
-    height: "min(820px, calc(100vh - 48px))",
-    maxWidth: 980,
+    height: "min(860px, calc(100vh - 64px))",
+    maxWidth: 1040,
     overflow: "hidden",
     width: "100%",
   },
-  footer: { borderTop: "1px solid #E2E8F0", padding: "16px 22px 13px" },
+  footer: {
+    background: "rgba(255,255,255,0.84)",
+    borderTop: "1px solid #e8efef",
+    padding: "18px 28px 16px",
+  },
   loginForm: {
     alignSelf: "center",
     display: "flex",
+    flex: "1 1 auto",
     flexDirection: "column",
-    maxWidth: 420,
-    padding: 28,
+    justifyContent: "center",
+    maxWidth: 440,
+    padding: "36px 32px 42px",
     width: "100%",
   },
-  loginTitle: { color: "#1F2937", fontSize: 22, margin: "0 0 8px" },
-  loginDescription: { color: "#64748B", fontSize: 14, lineHeight: 1.5, margin: "0 0 20px" },
-  loginLabel: { color: "#475569", fontSize: 13, margin: "0 0 6px" },
+  loginIllustration: {
+    alignItems: "center",
+    alignSelf: "center",
+    background: "linear-gradient(145deg, #dff3ef, #eef7f5)",
+    border: "1px solid #d5ebe6",
+    borderRadius: 22,
+    color: "var(--color-primary)",
+    display: "flex",
+    fontSize: 28,
+    height: 66,
+    justifyContent: "center",
+    marginBottom: 22,
+    width: 66,
+  },
+  loginEyebrow: {
+    color: "#168275",
+    fontSize: 11,
+    fontWeight: 800,
+    letterSpacing: "0.14em",
+    margin: "0 0 9px",
+    textAlign: "center",
+  },
+  loginTitle: { color: "var(--color-ink)", fontSize: 29, letterSpacing: "-0.04em", margin: "0 0 9px", textAlign: "center" },
+  loginDescription: { color: "var(--color-muted)", fontSize: 14, lineHeight: 1.65, margin: "0 0 26px", textAlign: "center" },
+  loginLabel: { color: "var(--color-text)", fontSize: 12, fontWeight: 700, margin: "0 0 7px" },
   loginInput: {
-    background: "#FFFFFF",
-    border: "1px solid #CBD5E1",
-    borderRadius: 8,
-    color: "#1F2937",
+    background: "var(--color-surface)",
+    border: "1px solid var(--color-border)",
+    borderRadius: 12,
+    color: "var(--color-ink)",
     font: "inherit",
     fontSize: 14,
-    marginBottom: 14,
-    outlineColor: "#1D4ED8",
-    padding: "10px 12px",
+    marginBottom: 18,
+    padding: "13px 14px",
     width: "100%",
   },
   loginButton: {
-    background: "#1D4ED8",
+    alignItems: "center",
+    background: "linear-gradient(135deg, var(--color-primary), var(--color-primary-dark))",
     border: 0,
-    borderRadius: 8,
+    borderRadius: 12,
     color: "#FFFFFF",
     cursor: "pointer",
     font: "inherit",
     fontSize: 14,
-    fontWeight: 600,
-    marginTop: 4,
-    padding: "10px 12px",
+    fontWeight: 700,
+    justifyContent: "center",
+    marginTop: 6,
+    padding: "14px 16px",
   },
-  loginError: { color: "#B91C1C", fontSize: 13, margin: "14px 0 0" },
-  privacy: { color: "#64748B", fontSize: 12, margin: "10px 2px 0" },
+  loginError: { color: "var(--color-danger)", fontSize: 13, margin: "14px 0 0" },
+  loginPrivacy: { color: "#8a9a9c", fontSize: 11, margin: "22px 0 0", textAlign: "center" },
+  privacy: { color: "#8a9a9c", fontSize: 11, margin: "10px 2px 0", textAlign: "center" },
 };
-
-const responsiveStyles = `
-  * { box-sizing: border-box; }
-  body { margin: 0; min-width: 320px; }
-  button:focus-visible, textarea:focus-visible {
-    outline: 3px solid #60A5FA !important;
-    outline-offset: 2px;
-  }
-  button:disabled { cursor: not-allowed !important; opacity: 0.65; }
-  @media (max-width: 600px) {
-    main { padding: 0 !important; }
-    main > section { border-radius: 0 !important; height: 100dvh !important; }
-    header { padding: 16px !important; }
-    footer { padding: 12px 14px !important; }
-  }
-`;
