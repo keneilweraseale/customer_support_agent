@@ -38,6 +38,12 @@ class SupportRepository(Protocol):
 
     def get_support_ticket(self, ticket_id: str) -> SupportTicket | None: ...
 
+    def get_latest_support_ticket_for_conversation(
+        self,
+        conversation_id: str,
+        customer_id: str,
+    ) -> SupportTicket | None: ...
+
     def expire_old_cancellation_events(
         self,
         now: datetime | None = None,

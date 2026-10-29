@@ -184,6 +184,29 @@ class JsonRepository(SupportRepository):
                 None,
             )
 
+    def get_latest_support_ticket_for_conversation(
+        self,
+        conversation_id: str,
+        customer_id: str,
+    ) -> SupportTicket | None:
+        with self._write_lock:
+            tickets = self._read_optional_records(
+                "support_tickets.json",
+                SupportTicket,
+                "ticket_id",
+            )
+            matching_tickets = [
+                ticket
+                for ticket in tickets
+                if ticket.conversation_id == conversation_id
+                and ticket.customer_id == customer_id
+            ]
+            return max(
+                matching_tickets,
+                key=lambda ticket: ticket.created_at,
+                default=None,
+            )
+
     def update_cancellation_event(self, event: CancellationEvent) -> None:
         with self._write_lock:
             events = self._active_cancellation_events()

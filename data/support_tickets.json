@@ -134,5 +134,37 @@
     "customer_id": "CUS-DEMO-001",
     "status": "open",
     "created_at": "2026-10-29T07:13:46.615229Z"
+  },
+  {
+    "ticket_id": "SUP-61EF7C75E621",
+    "conversation_id": "71e079ee-f8ea-4372-aefa-00075e8b89b3",
+    "customer_message": "but my bank account was charged for the payment what am i supposed to do?",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-29T09:04:06.102348Z"
+  },
+  {
+    "ticket_id": "SUP-01C65CCE93F1",
+    "conversation_id": "f62243c1-ac1c-41f8-8f0a-b38d7c337d1f",
+    "customer_message": "can you please contact customer support",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-29T09:18:54.675422Z"
+  },
+  {
+    "ticket_id": "SUP-DA88207C9930",
+    "conversation_id": "a37e499e-fb93-4095-b483-f87918e4554d",
+    "customer_message": "my oder ORD-1002 payment says failed but my bank account was charged, i am so angry  i do not understand what is going on.",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-29T09:31:25.128104Z"
+  },
+  {
+    "ticket_id": "SUP-AF50F3FA3116",
+    "conversation_id": "8133bb75-5d69-440a-8a72-0f308ad891e4",
+    "customer_message": "but in my bank account it sayd the money has been deducted from my account i am not happy with that at all and i want to know what can happen from here",
+    "customer_id": "CUS-DEMO-002",
+    "status": "open",
+    "created_at": "2026-10-29T09:54:45.394794Z"
   }
 ]

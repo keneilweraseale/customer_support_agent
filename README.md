@@ -23,11 +23,23 @@ This repository implements the customer-support agent described in
   `1 / (60 + rank)` for each vector/BM25 result list. If query vectors cannot
   be created or stored vectors are missing/incompatible, BM25 can still retrieve
   evidence.
-- **Phase 6:** Deterministic chat routing selects approved-policy RAG, order,
-  delivery, payment, product, review, and cancellation-eligibility tools.
-  Mixed warranty/product questions combine policy sources with current product
-  data. Order-related requests require a signed-in customer session and order
-  reference; cancellation checks eligibility before asking for confirmation.
+- **Phase 6:** Deterministic chat routing handles clear common requests, with
+  Groq intent classification augmenting supported routes to interpret informal,
+  misspelled, or context-dependent messages. It can identify multiple requested
+  tasks in one message and combine their authorized order, delivery, payment,
+  product, review, or policy results in one response. The classifier returns
+  only validated intents;
+  server-side routes still enforce authorization, business rules, and tool
+  access. It can use recent redacted conversation turns to interpret follow-ups.
+  `GROQ_INTENT_MODEL` optionally selects a dedicated model and defaults to
+  `GROQ_MODEL`. If the classifier is unavailable, deterministic routing remains
+  in place. The latest message and limited conversation context may be sent to
+  Groq for classification; known payment-card formats, credentials, email
+  addresses, and order/product/customer references are redacted first, but
+  other personal details may still be present. Mixed warranty/product questions
+  combine policy sources with current product data. Order-related requests
+  require a signed-in customer session; cancellation checks eligibility before
+  asking for confirmation.
 - **Phase 7:** Authenticated conversations retain at most 12 recent turns and
   the last order reference, scoped to the verified customer. Memory expires
   after 30 minutes of inactivity by default, redacts common secret/payment
@@ -43,9 +55,10 @@ This repository implements the customer-support agent described in
 - **Human support escalation:** When policy evidence is missing, the model
   marks an answer as unverifiable, or answer generation fails, chat creates an
   open ticket in `data/support_tickets.json` and shows an in-app message form.
-  The signed-in customer can send details directly to the configured support
-  email without opening another app. Sensitive patterns are redacted before
-  the message is emailed. The sender is the company SMTP account and the
+  The signed-in customer can add details to the ticket later in the same
+  conversation or from its ticket card, then send them to the configured
+  support email without opening another app. Sensitive patterns are redacted
+  before the message is emailed. The sender is the company SMTP account and the
   verified customer account email is included as `Reply-To`, so support can
   reply to the customer without allowing sender spoofing. Configure
   `SUPPORT_EMAIL`, `SMTP_HOST`, and

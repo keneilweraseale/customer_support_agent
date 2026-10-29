@@ -34,8 +34,10 @@ function routeStatus(route) {
     product_tool: "Product information retrieved",
     review_tool: "Review information retrieved",
     rag_and_tool: "Policy and product information retrieved",
+    multi: "Requested information retrieved",
     cancellation_check: "Cancellation eligibility checked",
     clarification: "More information needed",
+    support_ticket_message: "Support ticket follow-up",
   }[route] ?? "Support information retrieved";
 }
 
@@ -100,7 +102,7 @@ export default function App() {
                 text: response.answer,
                 pending: false,
                 status: response.needs_human_support
-                  ? "Escalated to human support"
+                  ? "Support ticket created"
                   : routeStatus(response.route),
                 sources: response.sources ?? [],
                 actions: (response.actions ?? []).map((action) =>
@@ -214,11 +216,23 @@ export default function App() {
     if (!authorizationToken) {
       throw new Error("Your session has expired. Please sign in again.");
     }
-    await sendSupportTicketMessage({
-      ticketId,
-      message,
-      authorizationToken,
-    });
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      await sendSupportTicketMessage({
+        ticketId,
+        message,
+        authorizationToken,
+      });
+    } catch (error) {
+      if (error.status === 401) {
+        setAuthorizationToken("");
+        setLoginMessage(error.message);
+      }
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   async function recordCancellationDecision(

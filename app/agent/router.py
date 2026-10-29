@@ -1,3 +1,4 @@
+import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -5,9 +6,12 @@ from typing import Callable, Protocol
 
 from langchain_core.tools.base import ToolException
 
+from app.agent.intent_classifier import IntentClassificationError
 from app.rag.providers import ProviderConfigurationError
 from app.rag.service import PolicyAnswer
 from app.storage.json_store import DataStoreError
+
+logger = logging.getLogger(__name__)
 
 ORDER_ID_PATTERN = re.compile(r"\bORD-[A-Z0-9_-]+\b", re.IGNORECASE)
 PRODUCT_ID_PATTERN = re.compile(r"\bPROD-[A-Z0-9_-]+\b", re.IGNORECASE)
@@ -56,6 +60,7 @@ CANCEL_ACTION_PATTERN = re.compile(
 
 
 class ChatRoute(str, Enum):
+    MULTI = "multi"
     POLICY = "rag"
     ORDER = "order_tool"
     DELIVERY = "delivery_tool"
@@ -66,6 +71,7 @@ class ChatRoute(str, Enum):
     CANCELLATION = "cancellation_check"
     CLARIFICATION = "clarification"
     BILLING_ISSUE = "billing_issue"
+    SUPPORT_TICKET_MESSAGE = "support_ticket_message"
     OUT_OF_SCOPE = "out_of_scope"
     GREETING = "greeting"
 
@@ -74,11 +80,20 @@ class InvokableTool(Protocol):
     def invoke(self, input: dict[str, str]) -> dict[str, object]: ...
 
 
+class IntentClassifier(Protocol):
+    def classify(
+        self,
+        message: str,
+        conversation_context: list[dict[str, str]] | None = None,
+    ) -> list[str]: ...
+
+
 @dataclass(frozen=True)
 class RouteDecision:
     route: ChatRoute
     order_id: str | None = None
     product_id: str | None = None
+    additional_routes: tuple[ChatRoute, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -122,9 +137,18 @@ class ChatOrchestrator:
         customer_id: str | None = None,
         context_order_id: str | None = None,
         cancellation_preview_tool: InvokableTool | None = None,
+        route_decision: RouteDecision | None = None,
     ) -> OrchestratedChatResult:
         actual_tool_calls: list[dict[str, object]] = []
-        decision = classify_message(message)
+        decision = route_decision or classify_message(message)
+        if decision.additional_routes:
+            return self._answer_multiple(
+                message,
+                decision,
+                customer_id,
+                context_order_id,
+                actual_tool_calls,
+            )
         if (
             decision.route
             in {
@@ -380,6 +404,107 @@ class ChatOrchestrator:
             actual_tool_calls=list(actual_tool_calls),
         )
 
+    def _answer_multiple(
+        self,
+        message: str,
+        decision: RouteDecision,
+        customer_id: str | None,
+        context_order_id: str | None,
+        actual_tool_calls: list[dict[str, object]],
+    ) -> OrchestratedChatResult:
+        routes = (decision.route, *decision.additional_routes)
+        order_id = decision.order_id or context_order_id
+        if any(
+            route in {ChatRoute.ORDER, ChatRoute.DELIVERY, ChatRoute.PAYMENT}
+            for route in routes
+        ):
+            if customer_id is None:
+                return OrchestratedChatResult(
+                    answer="Please sign in so I can check your order information.",
+                    route=ChatRoute.CLARIFICATION,
+                    sources=[],
+                    actions=[],
+                )
+            if order_id is None:
+                return OrchestratedChatResult(
+                    answer="What is the order reference? I’ll check each part of your question together.",
+                    route=ChatRoute.CLARIFICATION,
+                    sources=[],
+                    actions=[],
+                )
+
+        answers: list[str] = []
+        sources: list[dict[str, str]] = []
+        needs_human_support = False
+        for route in routes:
+            if route in {ChatRoute.ORDER, ChatRoute.DELIVERY, ChatRoute.PAYMENT}:
+                tool, tool_name = {
+                    ChatRoute.ORDER: (self._order_tool, "get_order_status"),
+                    ChatRoute.DELIVERY: (self._delivery_tool, "get_delivery_status"),
+                    ChatRoute.PAYMENT: (self._payment_tool, "get_payment_status"),
+                }[route]
+                result = self._invoke_tool(
+                    tool,
+                    {"order_id": order_id or "", "customer_id": customer_id or ""},
+                    tool_name,
+                    actual_tool_calls,
+                )
+                formatted = self._format_order_result(route, result)
+                answers.append(formatted.answer)
+                needs_human_support = needs_human_support or result.get(
+                    "unavailable"
+                ) is True
+            elif route == ChatRoute.POLICY:
+                try:
+                    policy_result = self._policy_answer(message)
+                except ProviderConfigurationError:
+                    answers.append(
+                        "I couldn’t check approved policy information right now."
+                    )
+                    needs_human_support = True
+                else:
+                    answers.append(f"Policy information: {policy_result.answer}")
+                    sources.extend(policy_result.sources)
+                    needs_human_support = needs_human_support or getattr(
+                        policy_result,
+                        "needs_human_support",
+                        False,
+                    )
+            elif route == ChatRoute.PRODUCT:
+                if decision.product_id is None:
+                    answers.append(
+                        "Please provide a product reference so I can check product information."
+                    )
+                    continue
+                result = self._invoke_tool(
+                    self._product_tool,
+                    {"product_id": decision.product_id},
+                    "check_product_availability",
+                    actual_tool_calls,
+                )
+                answers.append(self._format_product_result(result).answer)
+            elif route == ChatRoute.REVIEWS:
+                result = self._invoke_tool(
+                    self._review_tool,
+                    (
+                        {"product_id": decision.product_id}
+                        if decision.product_id
+                        else {"query": message}
+                    ),
+                    "search_customer_reviews",
+                    actual_tool_calls,
+                )
+                answers.append(self._format_review_result(result).answer)
+
+        return OrchestratedChatResult(
+            answer="\n\n".join(answers),
+            route=ChatRoute.MULTI,
+            sources=sources,
+            actions=[],
+            needs_human_support=needs_human_support,
+            actual_tool_calls=list(actual_tool_calls),
+        )
+
     def _check_cancellation(
         self,
         order_id: str,
@@ -550,11 +675,37 @@ class ChatOrchestrator:
                 "team to investigate the charge and refund."
             )
         else:
-            answer = (
-                f"I checked order {order_id}: it is marked {order_status}, and "
-                f"{payment_summary}. I can’t issue a refund directly, so I’m "
-                "escalating your refund request for review."
+            all_payments_failed = all(
+                item["payment_status"] == "failed" for item in payments
             )
+            if all_payments_failed and order_status == "shipped":
+                answer = (
+                    "I’m sorry—that’s worrying, and I can see why it seems "
+                    f"contradictory. Our records show order {order_id} as shipped, "
+                    "while the payment record shows the attempt failed. Those "
+                    "records don’t tell me why fulfillment proceeded or whether "
+                    "your bank’s charge is pending or settled, so I don’t want "
+                    "to guess. I’ve created a support ticket for the team to "
+                    "review the order and payment records. It will only be sent "
+                    "to support when you submit a message using the ticket form."
+                )
+            elif all_payments_failed:
+                answer = (
+                    "I’m sorry—that’s worrying, especially when your bank shows "
+                    f"a charge. I checked order {order_id}: it is marked "
+                    f"{order_status}, and our payment record shows the attempt "
+                    "failed. I can’t see your bank’s transaction status, so I "
+                    "can’t confirm whether the amount is pending or settled. "
+                    "Please ask your bank to confirm the transaction status; "
+                    "I’m asking support to reconcile it with our payment records."
+                )
+            else:
+                answer = (
+                    "I’m sorry you’re dealing with a payment concern. I checked "
+                    f"order {order_id}: it is marked {order_status}, and "
+                    f"{payment_summary}. I can’t verify your bank’s transaction "
+                    "status, so I’m asking support to review the records."
+                )
         return finish(OrchestratedChatResult(
             answer=answer,
             route=ChatRoute.BILLING_ISSUE,
@@ -850,6 +1001,64 @@ class ChatOrchestrator:
         return "I couldn’t determine what information you need. Could you clarify your question?"
 
 
+def classify_message_with_intent(
+    message: str,
+    classifier: IntentClassifier | None,
+    conversation_context: list[dict[str, str]] | None = None,
+) -> RouteDecision:
+    decision = classify_message(message)
+    if classifier is None:
+        return decision
+
+    order_ids = {
+        order_id.upper() for order_id in ORDER_ID_PATTERN.findall(message)
+    }
+    if len(order_ids) > 1:
+        return RouteDecision(ChatRoute.CLARIFICATION)
+    if decision.route not in {
+        ChatRoute.OUT_OF_SCOPE,
+        ChatRoute.CLARIFICATION,
+        ChatRoute.ORDER,
+        ChatRoute.DELIVERY,
+        ChatRoute.PAYMENT,
+        ChatRoute.POLICY,
+        ChatRoute.PRODUCT,
+        ChatRoute.REVIEWS,
+        ChatRoute.GREETING,
+    }:
+        return decision
+    try:
+        intents = classifier.classify(message, conversation_context)
+    except IntentClassificationError:
+        logger.warning(
+            "Using deterministic chat routing because intent classification failed."
+        )
+        return decision
+
+    route_by_intent = {
+        "billing_issue": ChatRoute.BILLING_ISSUE,
+        "cancellation": ChatRoute.CANCELLATION,
+        "delivery": ChatRoute.DELIVERY,
+        "greeting": ChatRoute.GREETING,
+        "order": ChatRoute.ORDER,
+        "payment": ChatRoute.PAYMENT,
+        "policy": ChatRoute.POLICY,
+        "product": ChatRoute.PRODUCT,
+        "reviews": ChatRoute.REVIEWS,
+        "support_ticket_message": ChatRoute.SUPPORT_TICKET_MESSAGE,
+        "clarification": ChatRoute.CLARIFICATION,
+        "out_of_scope": ChatRoute.OUT_OF_SCOPE,
+    }
+    product_match = PRODUCT_ID_PATTERN.search(message)
+    routes = tuple(dict.fromkeys(route_by_intent[intent] for intent in intents))
+    return RouteDecision(
+        route=routes[0],
+        order_id=next(iter(order_ids), None),
+        product_id=product_match.group(0).upper() if product_match else None,
+        additional_routes=routes[1:],
+    )
+
+
 def classify_message(message: str) -> RouteDecision:
     normalized = message.casefold()
     order_ids = {
@@ -869,15 +1078,25 @@ def classify_message(message: str) -> RouteDecision:
     has_cancellation_intent = has_any(normalized, CANCEL_WORDS)
     is_how_to_request = re.search(r"\bhow\s+(do|can|should)\s+i\b", normalized) is not None
 
+    is_charge_dispute = (
+        has_any(normalized, ("charged", "charge", "deducted", "money taken"))
+        and has_any(
+            normalized,
+            ("bank", "money", "account", "twice", "but", "even though"),
+        )
+    )
     is_billing_issue = (
-        has_cancellation_intent
-        and (
-            has_payment_intent
-            or (
-                has_any(normalized, ("refund", "money back", "bank account"))
-                and has_any(normalized, ("want", "get", "charged", "paid", "back"))
+        (
+            has_cancellation_intent
+            and (
+                has_payment_intent
+                or (
+                    has_any(normalized, ("refund", "money back", "bank account"))
+                    and has_any(normalized, ("want", "get", "charged", "paid", "back"))
+                )
             )
         )
+        or is_charge_dispute
         and not (has_policy_intent and not has_payment_intent)
     )
     if is_billing_issue:
