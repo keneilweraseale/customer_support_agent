@@ -1,9 +1,5 @@
-<<<<<<< Updated upstream
-import { useEffect, useRef, useState } from "react";
-=======
->>>>>>> Stashed changes
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import CancellationConfirmation from "./CancellationConfirmation.jsx";
 
 export default function MessageList({
@@ -18,14 +14,17 @@ export default function MessageList({
   const bottomRef = useRef(null);
 
   useEffect(() => {
+    const motionPreference = globalThis.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    );
     bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
+      behavior: motionPreference?.matches ? "auto" : "smooth",
       block: "end",
     });
   }, [messages, isLoading]);
 
   return (
-    <div aria-label="Conversation" style={styles.scroller}>
+    <div aria-label="Conversation" className="chat-scroller" style={styles.scroller}>
       <div
         aria-live="polite"
         aria-relevant="additions text"
@@ -39,6 +38,7 @@ export default function MessageList({
               ...styles.row,
               justifyContent:
                 message.role === "user" ? "flex-end" : "flex-start",
+              animation: "rise-in 280ms ease both",
             }}
           >
             <div
@@ -55,14 +55,10 @@ export default function MessageList({
                 (action) => action.type === "support_ticket"
               ) && (
                 <SupportTicketActions
-<<<<<<< Updated upstream
-                  action={message.actions.find((item) => item.type === "support_ticket")}
-                  onSubmit={onSupportTicketMessage}
-=======
                   action={message.actions.find(
                     (item) => item.type === "support_ticket"
                   )}
->>>>>>> Stashed changes
+                  onSend={onSupportTicketMessage}
                 />
               )}
 
@@ -139,12 +135,12 @@ export default function MessageList({
           <div aria-label="Quick actions" style={styles.quickActions}>
             {quickActions.map((action) => (
               <button
-                key={action}
-                onClick={() => onQuickAction(action)}
+                key={action.label}
+                onClick={() => onQuickAction(action.prompt)}
                 style={styles.chip}
                 type="button"
               >
-                {action}
+                {action.label}
               </button>
             ))}
           </div>
@@ -162,8 +158,12 @@ export default function MessageList({
                 ...styles.assistantBubble,
               }}
             >
-              <span style={styles.loadingDot} />
-              Checking that for you…
+              <span aria-hidden="true" style={styles.loadingDots}>
+                <i style={styles.loadingDot} />
+                <i style={{ ...styles.loadingDot, animationDelay: "120ms" }} />
+                <i style={{ ...styles.loadingDot, animationDelay: "240ms" }} />
+              </span>
+              I’m checking that for you…
             </div>
           </div>
         )}
@@ -174,47 +174,25 @@ export default function MessageList({
   );
 }
 
-function SupportTicketActions({ action }) {
-  return (
-    <section
-      aria-label="Support ticket"
-      style={styles.supportActions}
-    >
-      <strong>Support ticket: {action.ticket_id}</strong>
-      <p style={{ margin: "8px 0 0" }}>
-        Your request has been recorded for the support team.
-      </p>
-    </section>
-  );
-}
-
-const quickActions = [
-  "Check an order",
-  "Delivery issue",
-  "Payment issue",
-  "Returns & refunds",
-  "Product availability",
-  "Contact support",
-];
-
-<<<<<<< Updated upstream
-function SupportTicketActions({ action, onSubmit }) {
+function SupportTicketActions({ action, onSend }) {
   const [message, setMessage] = useState("");
-  const [status, setStatus] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState("");
+  const [sent, setSent] = useState(false);
 
-  async function submit(event) {
+  async function submitMessage(event) {
     event.preventDefault();
-    const messageText = message.trim();
-    if (!messageText || isSending) return;
+    const text = message.trim();
+    if (!text || isSending) return;
+
     setIsSending(true);
-    setStatus("");
+    setError("");
     try {
-      await onSubmit(action.ticket_id, messageText);
+      await onSend(action.ticket_id, text);
       setMessage("");
-      setStatus("Your message was sent to our support team.");
-    } catch (error) {
-      setStatus(error.message);
+      setSent(true);
+    } catch (sendError) {
+      setError(sendError.message);
     } finally {
       setIsSending(false);
     }
@@ -226,94 +204,116 @@ function SupportTicketActions({ action, onSubmit }) {
       <p style={styles.supportDescription}>
         A ticket does not notify an agent yet. Send your message below to reach our support team.
       </p>
-      <form onSubmit={submit} style={styles.supportForm}>
-        <label htmlFor={`support-message-${action.ticket_id}`} style={styles.supportLabel}>
-          Your message
+      <form className="ticket-message-form" onSubmit={submitMessage}>
+        <label htmlFor={`ticket-message-${action.ticket_id}`}>
+          Send more details
         </label>
         <textarea
-          id={`support-message-${action.ticket_id}`}
+          disabled={isSending}
+          id={`ticket-message-${action.ticket_id}`}
           maxLength={2000}
-          onChange={(event) => setMessage(event.target.value)}
-          required
-          rows={4}
-          style={styles.supportInput}
+          onChange={(event) => {
+            setMessage(event.target.value);
+            setSent(false);
+          }}
+          placeholder="Describe what you still need help with"
           value={message}
         />
+        {error && (
+          <p className="ticket-message-error" role="alert">
+            {error}
+          </p>
+        )}
+        {sent && (
+          <p className="ticket-message-success" role="status">
+            Your message was sent to support.
+          </p>
+        )}
         <button
+          className="ticket-message-submit"
           disabled={!message.trim() || isSending}
-          style={styles.supportButton}
           type="submit"
         >
           {isSending ? "Sending…" : "Send to support"}
         </button>
       </form>
-      {status && <p aria-live="polite" role="status" style={styles.supportStatus}>{status}</p>}
     </section>
   );
 }
 
-=======
->>>>>>> Stashed changes
+const quickActions = [
+  { label: "Track an order", prompt: "I need to track an order" },
+  { label: "Delivery help", prompt: "I have a delivery issue" },
+  { label: "Payment issue", prompt: "I have a payment issue" },
+  { label: "Find a product", prompt: "I need help finding a product" },
+  { label: "Returns & refunds", prompt: "What is your returns and refunds policy?" },
+  { label: "Warranty", prompt: "What is your warranty policy?" },
+  { label: "Contact support", prompt: "I want to contact support" },
+];
+
 const styles = {
   scroller: {
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    padding: "24px 20px",
+    padding: "27px 28px",
+    scrollBehavior: "smooth",
   },
 
   list: {
     margin: "0 auto",
-    maxWidth: 760,
+    maxWidth: 720,
   },
 
   row: {
     display: "flex",
-    margin: "14px 0",
+    margin: "17px 0",
   },
 
   bubble: {
-    borderRadius: 18,
-    fontSize: 15,
-    lineHeight: 1.6,
-    maxWidth: "min(88%, 600px)",
+    borderRadius: 19,
+    fontSize: 14,
+    lineHeight: 1.7,
+    maxWidth: "min(88%, 620px)",
     overflowWrap: "anywhere",
-    padding: "13px 16px",
+    padding: "14px 17px",
     whiteSpace: "pre-wrap",
   },
 
   userBubble: {
-    background: "#1D4ED8",
-    borderBottomRightRadius: 5,
+    background: "linear-gradient(145deg, var(--color-primary), var(--color-primary-dark))",
+    borderBottomRightRadius: 6,
     color: "#FFFFFF",
+    boxShadow: "0 6px 16px rgba(22, 139, 126, .13)",
   },
 
   assistantBubble: {
-    background: "#FFFFFF",
-    border: "1px solid #E2E8F0",
-    borderBottomLeftRadius: 5,
-    color: "#1F2937",
+    background: "#fff",
+    border: "1px solid #e8efef",
+    borderBottomLeftRadius: 6,
+    boxShadow: "0 4px 14px rgba(30, 65, 68, .035)",
+    color: "var(--color-text)",
   },
 
   status: {
-    color: "#0F766E",
-    fontSize: 12,
+    color: "var(--color-primary)",
+    fontSize: 11,
     fontWeight: 600,
-    marginTop: 8,
+    marginTop: 10,
   },
 
   sources: {
-    borderTop: "1px solid #E2E8F0",
-    color: "#475569",
-    fontSize: 12,
-    marginTop: 10,
-    paddingTop: 8,
+    borderTop: "1px solid #edf2f2",
+    color: "#77888a",
+    fontSize: 11,
+    marginTop: 12,
+    paddingTop: 10,
   },
 
   retry: {
     background: "transparent",
     border: 0,
-    color: "#1D4ED8",
+    color: "var(--color-primary-dark)",
     cursor: "pointer",
     display: "block",
     font: "inherit",
@@ -325,69 +325,45 @@ const styles = {
   },
 
   supportActions: {
-    borderTop: "1px solid #E2E8F0",
-    color: "#334155",
+    borderTop: "1px solid #edf2f2",
+    color: "#476164",
     fontSize: 13,
     marginTop: 12,
     paddingTop: 10,
   },
-<<<<<<< Updated upstream
-  supportDescription: { color: "#64748B", lineHeight: 1.5, margin: "6px 0 10px" },
-  supportForm: { display: "flex", flexDirection: "column", gap: 8 },
-  supportLabel: { color: "#475569", fontWeight: 600 },
-  supportInput: {
-    border: "1px solid #CBD5E1",
-    borderRadius: 8,
-    boxSizing: "border-box",
-    color: "#1F2937",
-    font: "inherit",
-    minHeight: 86,
-    padding: "9px 10px",
-    resize: "vertical",
-    width: "100%",
-  },
-  supportButton: {
-    alignSelf: "flex-start",
-    background: "#1D4ED8",
-    border: 0,
-    borderRadius: 8,
-    color: "#FFFFFF",
-    cursor: "pointer",
-    font: "inherit",
-    fontWeight: 600,
-    padding: "9px 13px",
-  },
-  supportStatus: {
-    color: "#0F766E",
-    lineHeight: 1.5,
-    margin: "9px 0 0",
-=======
 
   quickActions: {
     display: "flex",
     flexWrap: "wrap",
-    gap: 9,
-    margin: "18px 0 24px",
->>>>>>> Stashed changes
+    gap: 8,
+    margin: "20px 0 26px",
   },
 
   chip: {
-    background: "#FFFFFF",
-    border: "1px solid #CBD5E1",
-    borderRadius: 999,
-    color: "#334155",
+    background: "var(--color-surface)",
+    border: "1px solid var(--color-border)",
+    borderRadius: 12,
+    color: "#496164",
     cursor: "pointer",
     font: "inherit",
-    fontSize: 13,
-    padding: "9px 13px",
+    fontSize: 12,
+    fontWeight: 600,
+    padding: "10px 13px",
+    boxShadow: "0 3px 9px rgba(30,65,68,.025)",
   },
 
+  loadingDots: {
+    display: "inline-flex",
+    gap: 3,
+    marginRight: 9,
+    verticalAlign: "middle",
+  },
   loadingDot: {
-    background: "#0F766E",
+    background: "var(--color-primary)",
     borderRadius: "50%",
     display: "inline-block",
-    height: 8,
-    marginRight: 8,
-    width: 8,
+    height: 6,
+    width: 6,
+    animation: "soft-pulse 1.1s ease-in-out infinite",
   },
 };
