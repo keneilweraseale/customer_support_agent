@@ -231,12 +231,41 @@ message without exposing a traceback.
 
 ## Test
 
-Install test dependencies and run the suite:
+### Run the tests and open the Allure dashboard
+
+1. Install the Python test dependencies:
 
 ```powershell
 python -m pip install -r requirements-dev.txt
-python -m pytest
 ```
+
+2. Run the tests to generate Allure results. Run the full suite:
+
+```powershell
+python -m pytest --alluredir=allure-results
+```
+
+Or run just the authorization tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_authorization.py --alluredir=allure-results
+```
+
+3. Install the Allure command-line tool if it is not already installed. It
+requires Java and npm:
+
+```powershell
+npm install --global allure-commandline
+```
+
+4. Start the dashboard:
+
+```powershell
+allure serve allure-results
+```
+
+This opens the generated report in your browser. Run the tests again whenever
+you want to refresh the results.
 
 ### Use the Phase 2 tools in Python
 
