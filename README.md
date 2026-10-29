@@ -28,23 +28,46 @@ This repository implements the customer-support agent described in
   Mixed warranty/product questions combine policy sources with current product
   data. Order-related requests require a signed-in customer session and order
   reference; cancellation checks eligibility before asking for confirmation.
+  Delivery, policy, and support-contact tasks can be answered together. The
+  local `Policies.pdf` currently conflicts with its registry approval flag, so
+  it is marked unapproved and is excluded from retrieval until an authorized
+  reviewer resolves that conflict.
 - **Phase 7:** Authenticated conversations retain at most 12 recent turns and
   the last order reference, scoped to the verified customer. Memory expires
   after 30 minutes of inactivity by default, redacts common secret/payment
-  formats, and is used only to resolve follow-up references before current
-  order tools are called; `memory_enabled` can disable short-term storage and
-  retrieval. The chat response reports short-term use and whether cancellation
-  history was created, never the stored turns. Cancellation requests collect an
+  formats, resolves follow-up references, and can recap recent exchanges when
+  asked. The browser keeps the conversation ID in tab-scoped session storage so
+  the server-side JSON history remains reachable after a page reload;
+  `memory_enabled` can disable short-term storage and retrieval. The chat
+  response reports short-term use and whether cancellation history was created,
+  never the stored turns. Cancellation requests collect an
   optional reason, require explicit confirmation, and persist eligibility and
   final outcomes (`cancelled`, `declined`, `ineligible`, or `withdrawn`) in
   `data/cancellation_history.json`. Demo cancellation history expires after
   365 days by default. These retention values are configurable through
   `JsonRepository`; confirm business retention requirements before production.
+- **Multi-part requests and escalation context:** Combined order, delivery, and
+  payment questions check each requested data source independently; policy
+  questions in the same message are answered from eligible evidence or
+  explicitly reported as unverified. A refund-status request checks the
+  authenticated order’s payment record; only a record marked `refunded` confirms
+  that state, otherwise a separate refund record is unavailable and the issue
+  is offered to support. Repeated-delivery complaints receive an
+  acknowledgment before the latest available status or the required order
+  clarification. Address changes are not performed by the demo agent; it
+  reports that limitation and offers escalation rather than claiming the
+  change succeeded. When an
+  authenticated customer asks about “the other one,” short-term context
+  identifies the previous lookup type and the order search selects another
+  order only when exactly one safe match exists. Escalation tickets keep a
+  redacted issue summary, related order reference when known, and up to 12
+  recent conversation turns in `data/support_tickets.json`.
 - **Human support escalation:** When policy evidence is missing, the model
   marks an answer as unverifiable, or answer generation fails, chat creates an
   open ticket in `data/support_tickets.json` and shows an in-app message form.
-  The signed-in customer can send details directly to the configured support
-  email without opening another app. Sensitive patterns are redacted before
+  The local ticket alone does not notify a human: the signed-in customer must
+  submit the form to send details to the configured support email. The UI and
+  response explain this distinction. Sensitive patterns are redacted before
   the message is emailed. The sender is the company SMTP account and the
   verified customer account email is included as `Reply-To`, so support can
   reply to the customer without allowing sender spoofing. Configure
@@ -53,15 +76,31 @@ This repository implements the customer-support agent described in
   authentication is required. `SMTP_USE_TLS` defaults to `true`;
   `SMTP_USE_SSL=true` enables implicit TLS instead. `SMTP_FROM_EMAIL` can
   override the sender address. Email delivery must be configured for the form
-  to send messages successfully.
-- **Conversational scope and issue handling:** General questions outside
-  store/e-commerce support are politely declined rather than answered with
-  generic advice. Delivery complaints without an order number can search only
-  the verified customer's own orders. Cancelled-order charge/refund complaints
+  to send messages successfully. Support staff sign in separately at
+  `POST /api/auth/support-agent/login`; customer tokens cannot read staff details
+  or update tickets. Staff can transition a ticket with
+  `PATCH /api/support/tickets/{ticket_id}/status`, providing a status and
+  audit note. Moving a ticket to `waiting_for_customer` or `resolved` also
+  requires a customer-facing message. Customers can check their own ticket's
+  status and latest public update at `GET /api/support/tickets/{ticket_id}/status`;
+  this response does not include staff notes or conversation details. Accounts
+  are provisioned with
+  `python -m app.services.support_agent_accounts --staff-id STAFF-001 --email agent@example.com`.
+  Support-agent password hashes are stored in the git-ignored JSON file
+  `data/support_agents.json`.
+- **Conversational scope and issue handling:** Harmless car-buying questions
+  receive brief general selection guidance while the assistant explains its
+  e-commerce support focus; other unrelated questions are politely declined.
+  Delivery complaints without an order number can search only the verified
+  customer's own orders. Cancelled-order charge/refund complaints
   check both order and payment records, then create a support ticket when human
   investigation is needed. The assistant does not claim that a refund was
   issued or that a human was contacted; tickets are local demo records and the
   signed-in customer can send further details directly to support by email.
+  Tickets remain in JSON; this demo does not include a staff assignment
+  workflow. Status updates are audit-recorded, require a note, and use explicit
+  allowed transitions; JSON file locking is process-local, so multi-worker
+  production deployments still need shared durable storage.
 
 Phase 2 tools are available through chat routing but are not separate HTTP
 endpoints apart from cancellation confirmation. Customers sign in with their

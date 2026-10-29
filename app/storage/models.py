@@ -31,6 +31,29 @@ class ConversationTurn(RecordModel):
     created_at: datetime
 
 
+SupportTicketStatus = Literal[
+    "open",
+    "investigating",
+    "waiting_for_customer",
+    "escalated",
+    "resolved",
+]
+
+
+class SupportTicketStatusChange(RecordModel):
+    previous_status: SupportTicketStatus
+    status: SupportTicketStatus
+    changed_by: Identifier
+    changed_at: datetime
+    note: Annotated[str, StringConstraints(max_length=1000)] | None = None
+
+
+class SupportTicketCustomerUpdate(RecordModel):
+    status: SupportTicketStatus
+    message: Annotated[str, StringConstraints(min_length=1, max_length=1000)]
+    created_at: datetime
+
+
 class ConversationMemory(RecordModel):
     conversation_id: Annotated[str, StringConstraints(min_length=1, max_length=100)]
     owner_id: Identifier
@@ -98,7 +121,18 @@ class SupportTicket(RecordModel):
     conversation_id: Annotated[str, StringConstraints(min_length=1, max_length=100)]
     customer_message: Annotated[str, StringConstraints(min_length=1, max_length=2000)]
     customer_id: Identifier | None = None
-    status: Literal["open"] = "open"
+    order_id: Identifier | None = None
+    issue_summary: Annotated[str, StringConstraints(max_length=2000)] | None = None
+    conversation_context: list[ConversationTurn] = Field(
+        default_factory=list,
+        max_length=12,
+    )
+    status: SupportTicketStatus = "open"
+    status_history: list[SupportTicketStatusChange] = Field(
+        default_factory=list,
+        max_length=100,
+    )
+    customer_update: SupportTicketCustomerUpdate | None = None
     created_at: datetime
 
 
@@ -137,6 +171,28 @@ class CustomerAccount(RecordModel):
             pattern=r"^scrypt\$16384\$8\$1\$[A-Za-z0-9_-]{22}\$[A-Za-z0-9_-]{43}$",
         ),
     ]
+
+
+class SupportAgentAccount(RecordModel):
+    email: Annotated[
+        str,
+        StringConstraints(
+            strip_whitespace=True,
+            min_length=3,
+            max_length=254,
+            pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+        ),
+    ]
+    staff_id: Identifier
+    password_hash: Annotated[
+        str,
+        StringConstraints(
+            min_length=1,
+            max_length=256,
+            pattern=r"^scrypt\$16384\$8\$1\$[A-Za-z0-9_-]{22}\$[A-Za-z0-9_-]{43}$",
+        ),
+    ]
+    role: Literal["support_agent"] = "support_agent"
 
 
 class Delivery(RecordModel):

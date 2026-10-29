@@ -8,6 +8,7 @@ from app.rag.retrieval import (
     cosine_similarity,
 )
 from app.rag.service import NO_EVIDENCE_ANSWER, PolicyAnswerService
+from app.storage.json_store import JsonRepository
 from app.storage.models import PolicyChunk, PolicyDocument
 
 UPDATED_AT = datetime(2026, 10, 22, tzinfo=timezone.utc)
@@ -291,6 +292,24 @@ def test_service_uses_transparent_fallback_when_evidence_is_missing() -> None:
     assert result.sources == []
     assert result.needs_human_support is True
     assert generator.calls == []
+
+
+def test_controlled_draft_policy_document_is_not_retrieved() -> None:
+    repository = JsonRepository()
+    document = next(
+        item
+        for item in repository.get_policy_documents()
+        if item.document_id == "customer-support-policies"
+    )
+    assert document.approved is False
+
+    result = HybridPolicyRetriever(
+        repository,
+        FakeEmbedder([1.0, 0.0]),
+    ).search("Can I return an item after 30 days?")
+
+    assert result.results == []
+    assert result.vector_error == "no_valid_approved_chunks"
 
 
 def test_service_handles_generation_failure_without_inventing_answer() -> None:

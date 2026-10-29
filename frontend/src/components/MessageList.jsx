@@ -151,7 +151,7 @@ function SupportTicketActions({ action, onSubmit }) {
     <section aria-label="Contact human support" style={styles.supportActions}>
       <strong>Ticket {action.ticket_id}</strong>
       <p style={styles.supportDescription}>
-        Tell us more about the problem and we’ll send it directly to our support team.
+        A ticket does not notify an agent yet. Send your message below to reach our support team.
       </p>
       <form onSubmit={submit} style={styles.supportForm}>
         <label htmlFor={`support-message-${action.ticket_id}`} style={styles.supportLabel}>
