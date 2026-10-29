@@ -208,6 +208,17 @@ select:focus {
     padding: 16px 15px !important;
   }
 
+  .chat-header {
+    align-items: flex-start !important;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .header-actions {
+    flex-wrap: wrap;
+    margin-left: auto;
+  }
+
   footer {
     padding: 12px 14px 14px !important;
   }
@@ -227,8 +238,12 @@ select:focus {
   }
 
   .header-action {
-    font-size: 12px !important;
-    padding: 8px 10px !important;
+    font-size: 11px !important;
+    padding: 8px 9px !important;
+  }
+
+  .damage-report-action {
+    gap: 5px !important;
   }
 
   .chat-scroller {

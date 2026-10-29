@@ -248,6 +248,7 @@ const quickActions = [
   { label: "Find a product", prompt: "I need help finding a product" },
   { label: "Returns & refunds", prompt: "What is your returns and refunds policy?" },
   { label: "Warranty", prompt: "What is your warranty policy?" },
+  { label: "Report Damaged Item", prompt: "Report Damaged Item" },
   { label: "Contact support", prompt: "I want to contact support" },
 ];
 
