@@ -1,0 +1,1 @@
+[33mWARNING [0m app.rag.ingestion:ingestion.py:120 Using deterministic chunks for policy document demo-refund-policy: Semantic chunks do not preserve the cleaned source exactly.

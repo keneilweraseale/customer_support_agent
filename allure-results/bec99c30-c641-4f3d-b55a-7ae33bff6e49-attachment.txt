@@ -1,0 +1,2 @@
+[33mWARNING [0m app.rag.ingestion:ingestion.py:120 Using deterministic chunks for policy document demo-refund-policy: simulated provider unavailable
+[33mWARNING [0m app.rag.ingestion:ingestion.py:120 Using deterministic chunks for policy document demo-contact-information: simulated provider unavailable

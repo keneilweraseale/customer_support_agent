@@ -1,5 +1,9 @@
+<<<<<<< Updated upstream
 import { useEffect, useRef, useState } from "react";
+=======
+>>>>>>> Stashed changes
 
+import { useEffect, useRef } from "react";
 import CancellationConfirmation from "./CancellationConfirmation.jsx";
 
 export default function MessageList({
@@ -14,41 +18,73 @@ export default function MessageList({
   const bottomRef = useRef(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    bottomRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
   }, [messages, isLoading]);
 
   return (
     <div aria-label="Conversation" style={styles.scroller}>
-      <div aria-live="polite" aria-relevant="additions text" role="log" style={styles.list}>
+      <div
+        aria-live="polite"
+        aria-relevant="additions text"
+        role="log"
+        style={styles.list}
+      >
         {messages.map((message) => (
           <div
             key={message.id}
             style={{
               ...styles.row,
-              justifyContent: message.role === "user" ? "flex-end" : "flex-start",
+              justifyContent:
+                message.role === "user" ? "flex-end" : "flex-start",
             }}
           >
             <div
               style={{
                 ...styles.bubble,
-                ...(message.role === "user" ? styles.userBubble : styles.assistantBubble),
+                ...(message.role === "user"
+                  ? styles.userBubble
+                  : styles.assistantBubble),
               }}
             >
               {message.text}
-              {message.actions?.find((action) => action.type === "support_ticket") && (
+
+              {message.actions?.some(
+                (action) => action.type === "support_ticket"
+              ) && (
                 <SupportTicketActions
+<<<<<<< Updated upstream
                   action={message.actions.find((item) => item.type === "support_ticket")}
                   onSubmit={onSupportTicketMessage}
+=======
+                  action={message.actions.find(
+                    (item) => item.type === "support_ticket"
+                  )}
+>>>>>>> Stashed changes
                 />
               )}
+
               {message.error && (
-                <button onClick={() => onRetry(message.retryText)} style={styles.retry} type="button">
+                <button
+                  onClick={() => onRetry(message.retryText)}
+                  style={styles.retry}
+                  type="button"
+                >
                   Retry
                 </button>
               )}
+
               {message.showCancellationPreview && (
                 <CancellationConfirmation
-                  onDecision={(orderId, confirmationToken, outcome, reasonCode, reasonText) =>
+                  onDecision={(
+                    orderId,
+                    confirmationToken,
+                    outcome,
+                    reasonCode,
+                    reasonText
+                  ) =>
                     onCancellationDecision(
                       message.id,
                       orderId,
@@ -56,34 +92,45 @@ export default function MessageList({
                       outcome,
                       reasonCode,
                       reasonText,
-                      message.actions?.[0]?.idempotency_key,
+                      message.actions?.[0]?.idempotency_key
                     )
                   }
-                  onConfirm={(orderId, confirmationToken, reasonCode, reasonText) =>
+                  onConfirm={(
+                    orderId,
+                    confirmationToken,
+                    reasonCode,
+                    reasonText
+                  ) =>
                     onConfirmCancellation(
-                      message.id,
                       orderId,
                       confirmationToken,
                       message.actions?.[0]?.idempotency_key,
                       reasonCode,
-                      reasonText,
+                      reasonText
                     )
                   }
                   messageId={message.id}
                   orderId={message.actions?.[0]?.order_id}
-                  confirmationToken={message.actions?.[0]?.confirmation_token}
+                  confirmationToken={
+                    message.actions?.[0]?.confirmation_token
+                  }
                   disabled={isLoading}
                 />
               )}
+
               {message.role === "assistant" && message.status && (
                 <div style={styles.status}>{message.status}</div>
               )}
-              {message.role === "assistant" && message.sources?.length > 0 && (
-                <div style={styles.sources}>
-                  <strong>Sources:</strong>{" "}
-                  {message.sources.map((source) => source.title).join(", ")}
-                </div>
-              )}
+
+              {message.role === "assistant" &&
+                message.sources?.length > 0 && (
+                  <div style={styles.sources}>
+                    <strong>Sources:</strong>{" "}
+                    {message.sources
+                      .map((source) => source.title)
+                      .join(", ")}
+                  </div>
+                )}
             </div>
           </div>
         ))}
@@ -104,15 +151,40 @@ export default function MessageList({
         )}
 
         {isLoading && (
-          <div aria-label="Checking that for you" role="status" style={styles.row}>
-            <div style={{ ...styles.bubble, ...styles.assistantBubble }}>
-              <span style={styles.loadingDot} /> Checking that for you…
+          <div
+            aria-label="Checking that for you"
+            role="status"
+            style={styles.row}
+          >
+            <div
+              style={{
+                ...styles.bubble,
+                ...styles.assistantBubble,
+              }}
+            >
+              <span style={styles.loadingDot} />
+              Checking that for you…
             </div>
           </div>
         )}
+
         <div ref={bottomRef} />
       </div>
     </div>
+  );
+}
+
+function SupportTicketActions({ action }) {
+  return (
+    <section
+      aria-label="Support ticket"
+      style={styles.supportActions}
+    >
+      <strong>Support ticket: {action.ticket_id}</strong>
+      <p style={{ margin: "8px 0 0" }}>
+        Your request has been recorded for the support team.
+      </p>
+    </section>
   );
 }
 
@@ -125,6 +197,7 @@ const quickActions = [
   "Contact support",
 ];
 
+<<<<<<< Updated upstream
 function SupportTicketActions({ action, onSubmit }) {
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState("");
@@ -179,10 +252,26 @@ function SupportTicketActions({ action, onSubmit }) {
   );
 }
 
+=======
+>>>>>>> Stashed changes
 const styles = {
-  scroller: { flex: 1, minHeight: 0, overflowY: "auto", padding: "24px 20px" },
-  list: { margin: "0 auto", maxWidth: 760 },
-  row: { display: "flex", margin: "14px 0" },
+  scroller: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    padding: "24px 20px",
+  },
+
+  list: {
+    margin: "0 auto",
+    maxWidth: 760,
+  },
+
+  row: {
+    display: "flex",
+    margin: "14px 0",
+  },
+
   bubble: {
     borderRadius: 18,
     fontSize: 15,
@@ -192,15 +281,35 @@ const styles = {
     padding: "13px 16px",
     whiteSpace: "pre-wrap",
   },
-  userBubble: { background: "#1D4ED8", borderBottomRightRadius: 5, color: "#FFFFFF" },
+
+  userBubble: {
+    background: "#1D4ED8",
+    borderBottomRightRadius: 5,
+    color: "#FFFFFF",
+  },
+
   assistantBubble: {
     background: "#FFFFFF",
     border: "1px solid #E2E8F0",
     borderBottomLeftRadius: 5,
     color: "#1F2937",
   },
-  status: { color: "#0F766E", fontSize: 12, fontWeight: 600, marginTop: 8 },
-  sources: { borderTop: "1px solid #E2E8F0", color: "#475569", fontSize: 12, marginTop: 10, paddingTop: 8 },
+
+  status: {
+    color: "#0F766E",
+    fontSize: 12,
+    fontWeight: 600,
+    marginTop: 8,
+  },
+
+  sources: {
+    borderTop: "1px solid #E2E8F0",
+    color: "#475569",
+    fontSize: 12,
+    marginTop: 10,
+    paddingTop: 8,
+  },
+
   retry: {
     background: "transparent",
     border: 0,
@@ -214,6 +323,7 @@ const styles = {
     padding: 0,
     textDecoration: "underline",
   },
+
   supportActions: {
     borderTop: "1px solid #E2E8F0",
     color: "#334155",
@@ -221,6 +331,7 @@ const styles = {
     marginTop: 12,
     paddingTop: 10,
   },
+<<<<<<< Updated upstream
   supportDescription: { color: "#64748B", lineHeight: 1.5, margin: "6px 0 10px" },
   supportForm: { display: "flex", flexDirection: "column", gap: 8 },
   supportLabel: { color: "#475569", fontWeight: 600 },
@@ -250,8 +361,16 @@ const styles = {
     color: "#0F766E",
     lineHeight: 1.5,
     margin: "9px 0 0",
+=======
+
+  quickActions: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 9,
+    margin: "18px 0 24px",
+>>>>>>> Stashed changes
   },
-  quickActions: { display: "flex", flexWrap: "wrap", gap: 9, margin: "18px 0 24px" },
+
   chip: {
     background: "#FFFFFF",
     border: "1px solid #CBD5E1",
@@ -262,6 +381,7 @@ const styles = {
     fontSize: 13,
     padding: "9px 13px",
   },
+
   loadingDot: {
     background: "#0F766E",
     borderRadius: "50%",
