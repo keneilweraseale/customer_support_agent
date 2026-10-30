@@ -201,17 +201,17 @@ class CustomerTicketStatusEvent(BaseModel):
     changed_at: datetime
 
 
+class CustomerTicketMessage(BaseModel):
+    role: str
+    text: str
+    created_at: datetime
+
+
 class CustomerTicketDetail(CustomerTicketSummary):
     description: str
     messages: list[CustomerTicketMessage]
     status_history: list[CustomerTicketStatusEvent]
     customer_update: SupportTicketCustomerUpdate | None
-
-
-class CustomerTicketMessage(BaseModel):
-    role: str
-    text: str
-    created_at: datetime
 
 
 class CustomerTicketListResponse(BaseModel):
