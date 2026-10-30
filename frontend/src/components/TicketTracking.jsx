@@ -79,7 +79,37 @@ export default function TicketTracking({
 
   useEffect(() => {
     void loadTickets();
+    const timer = globalThis.setInterval(async () => {
+      try {
+        setTickets(await getCustomerTickets(authorizationToken));
+        setError("");
+      } catch (loadError) {
+        if (loadError.status === 401) onSessionExpired(loadError.message);
+        setError(loadError.message);
+      }
+    }, 15000);
+    return () => globalThis.clearInterval(timer);
   }, [authorizationToken]);
+
+  useEffect(() => {
+    if (!selectedTicket) return undefined;
+    const ticketId = selectedTicket.ticket_id;
+    let active = true;
+    const timer = globalThis.setInterval(async () => {
+      try {
+        const latest = await getCustomerTicket(ticketId, authorizationToken);
+        if (active) setSelectedTicket(latest);
+      } catch (detailError) {
+        if (active && detailError.status === 401) {
+          onSessionExpired(detailError.message);
+        }
+      }
+    }, 15000);
+    return () => {
+      active = false;
+      globalThis.clearInterval(timer);
+    };
+  }, [authorizationToken, selectedTicket?.ticket_id]);
 
   async function openTicket(ticketId) {
     setLoading(true);
@@ -121,6 +151,9 @@ export default function TicketTracking({
     try {
       await onSendMessage(selectedTicket.ticket_id, reply.trim());
       setReply("");
+      setSelectedTicket(
+        await getCustomerTicket(selectedTicket.ticket_id, authorizationToken),
+      );
       setReplySent(true);
     } catch (sendError) {
       setReplyError(sendError.message);
@@ -148,7 +181,9 @@ export default function TicketTracking({
           at: event.changed_at,
           role: "event",
         })),
-        ...(selectedTicket.customer_update
+        ...(selectedTicket.customer_update && !selectedTicket.messages.some(
+          (message) => message.text === selectedTicket.customer_update.message,
+        )
           ? [{
               kind: "Support update",
               text: selectedTicket.customer_update.message,
@@ -223,7 +258,6 @@ export default function TicketTracking({
               <button className="ticket-primary-button" disabled={!reply.trim() || replying} type="submit">
                 {replying ? "Sending…" : "Send message"}
               </button>
-              <p className="ticket-reply-note">Replies are sent to the configured support email and are not added to this ticket timeline in the current demo.</p>
             </form>
           </article>
           <aside className="ticket-detail-aside">

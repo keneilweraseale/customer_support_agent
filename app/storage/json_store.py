@@ -211,6 +211,7 @@ class JsonRepository(SupportRepository):
         self,
         ticket: SupportTicket,
         expected_status: SupportTicketStatus,
+        expected_updated_at: datetime | None = None,
     ) -> SupportTicket | None:
         with self._write_lock:
             tickets = self._read_optional_records(
@@ -232,6 +233,13 @@ class JsonRepository(SupportRepository):
             if existing.status != expected_status:
                 raise SupportTicketConflictError(
                     "Support ticket status changed before the update was saved."
+                )
+            if (
+                expected_updated_at is not None
+                and existing.updated_at != expected_updated_at
+            ):
+                raise SupportTicketConflictError(
+                    "Support ticket changed before the update was saved."
                 )
             if existing.customer_id != ticket.customer_id:
                 raise DataStoreError("Support ticket owner cannot be changed.")

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Customer Support AI Agent",
-    "description": "GET /health, POST /api/auth/login, POST /api/chat, cancellation confirmation, and cancellation decisions are implemented. Customer accounts must be provisioned locally.",
+    "description": "Customer support, ticket tracking, and role-protected support-agent ticket management requests. Customer and support-agent accounts must be provisioned locally.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -11,6 +11,10 @@
     },
     {
       "key": "authorizationToken",
+      "value": ""
+    },
+    {
+      "key": "staffAuthorizationToken",
       "value": ""
     }
   ],
@@ -233,7 +237,7 @@
     },
     {
       "name": "Reply to support ticket",
-      "description": "Sends a customer reply through the configured support email. Replies are not currently persisted in the ticket timeline.",
+      "description": "Sends the customer reply through configured support email and persists it in the shared ticket timeline.",
       "request": {
         "method": "POST",
         "header": [
@@ -275,6 +279,123 @@
           }
         },
         "url": "{{baseUrl}}/api/chat"
+      }
+    },
+    {
+      "name": "Support-agent login",
+      "description": "Set staffEmail and staffPassword in a private Postman environment. Stores the role-scoped token in staffAuthorizationToken.",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('staffAuthorizationToken', body.authorization_token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{staffEmail}}\",\n  \"password\": \"{{staffPassword}}\"\n}",
+          "options": {"raw": {"language": "json"}}
+        },
+        "url": "{{baseUrl}}/api/auth/support-agent/login"
+      }
+    },
+    {
+      "name": "Admin dashboard stats",
+      "description": "Returns actual ticket counts. Requires Support-agent login.",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization", "value": "Bearer {{staffAuthorizationToken}}"}],
+        "url": "{{baseUrl}}/api/admin/dashboard/stats"
+      }
+    },
+    {
+      "name": "Admin ticket list",
+      "description": "Example search, status and priority filtering with pagination.",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization", "value": "Bearer {{staffAuthorizationToken}}"}],
+        "url": "{{baseUrl}}/api/admin/tickets?search=delivery&status=open&priority=medium&page=1&page_size=20"
+      }
+    },
+    {
+      "name": "Admin ticket details",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization", "value": "Bearer {{staffAuthorizationToken}}"}],
+        "url": "{{baseUrl}}/api/admin/tickets/SUP-C8D5BFA0A575"
+      }
+    },
+    {
+      "name": "Admin update ticket status",
+      "description": "Transitions are validated on the backend. A customer_message is required for waiting_for_customer and resolved.",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{staffAuthorizationToken}}"},
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"investigating\",\n  \"note\": \"Reviewing carrier scan history.\"\n}",
+          "options": {"raw": {"language": "json"}}
+        },
+        "url": "{{baseUrl}}/api/admin/tickets/SUP-C8D5BFA0A575/status"
+      }
+    },
+    {
+      "name": "Admin set ticket priority",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{staffAuthorizationToken}}"},
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "body": {"mode": "raw", "raw": "{\n  \"priority\": \"high\"\n}", "options": {"raw": {"language": "json"}}},
+        "url": "{{baseUrl}}/api/admin/tickets/SUP-C8D5BFA0A575/priority"
+      }
+    },
+    {
+      "name": "Admin assign ticket",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{staffAuthorizationToken}}"},
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "body": {"mode": "raw", "raw": "{\n  \"assigned_to\": \"STAFF-001\"\n}", "options": {"raw": {"language": "json"}}},
+        "url": "{{baseUrl}}/api/admin/tickets/SUP-C8D5BFA0A575/assign"
+      }
+    },
+    {
+      "name": "Admin reply to customer",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{staffAuthorizationToken}}"},
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "body": {"mode": "raw", "raw": "{\n  \"message\": \"We are checking this with the carrier.\"\n}", "options": {"raw": {"language": "json"}}},
+        "url": "{{baseUrl}}/api/admin/tickets/SUP-C8D5BFA0A575/reply"
+      }
+    },
+    {
+      "name": "Admin add internal note",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{staffAuthorizationToken}}"},
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "body": {"mode": "raw", "raw": "{\n  \"note\": \"Check carrier escalation log.\"\n}", "options": {"raw": {"language": "json"}}},
+        "url": "{{baseUrl}}/api/admin/tickets/SUP-C8D5BFA0A575/notes"
       }
     },
     {

@@ -56,6 +56,7 @@ from app.storage.models import (
     ConversationTurn,
     SupportTicket,
     SupportTicketCustomerUpdate,
+    SupportTicketMessage,
     SupportTicketStatus,
     SupportTicketStatusChange,
 )
@@ -202,9 +203,15 @@ class CustomerTicketStatusEvent(BaseModel):
 
 class CustomerTicketDetail(CustomerTicketSummary):
     description: str
-    messages: list[ConversationTurn]
+    messages: list[CustomerTicketMessage]
     status_history: list[CustomerTicketStatusEvent]
     customer_update: SupportTicketCustomerUpdate | None
+
+
+class CustomerTicketMessage(BaseModel):
+    role: str
+    text: str
+    created_at: datetime
 
 
 class CustomerTicketListResponse(BaseModel):
@@ -960,6 +967,35 @@ async def send_ticket_message(
             ),
         ) from exc
 
+    now = datetime.now(timezone.utc)
+    updated_ticket = SupportTicket.model_validate(
+        ticket.model_dump()
+        | {
+            "updated_at": now,
+            "messages": [
+                *ticket.messages,
+                SupportTicketMessage(
+                    author_role="customer",
+                    author_id=customer_id,
+                    text=sanitized_message,
+                    created_at=now,
+                ),
+            ][-200:],
+        }
+    )
+    try:
+        await run_in_threadpool(
+            support_repository.update_support_ticket,
+            updated_ticket,
+            ticket.status,
+            ticket.updated_at,
+        )
+    except DataStoreError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Your message was sent, but the ticket timeline could not be updated.",
+        ) from exc
+
     return {"sent": True, "ticket_id": ticket_id}
 
 
@@ -1012,10 +1048,32 @@ async def get_customer_ticket(
             created_at=ticket.created_at,
         )
     ]
+    customer_messages = [
+        CustomerTicketMessage(
+            role="user" if message.author_role == "customer" else "assistant",
+            text=message.text,
+            created_at=message.created_at,
+        )
+        for message in ticket.messages
+    ]
+    ticket_messages = [
+        CustomerTicketMessage(
+            role=turn.role,
+            text=turn.text,
+            created_at=turn.created_at,
+        )
+        for turn in messages
+    ]
+    merged_messages = sorted(
+        [*ticket_messages, *customer_messages],
+        key=lambda message: message.created_at,
+    )
     updated_at = max(
         [ticket.created_at]
         + [change.changed_at for change in ticket.status_history]
+        + ([ticket.updated_at] if ticket.updated_at else [])
         + ([ticket.customer_update.created_at] if ticket.customer_update else [])
+        + [message.created_at for message in ticket.messages]
     )
     return CustomerTicketDetail(
         ticket_id=ticket.ticket_id,
@@ -1024,7 +1082,7 @@ async def get_customer_ticket(
         created_at=ticket.created_at,
         updated_at=updated_at,
         description=ticket.customer_message,
-        messages=messages,
+        messages=merged_messages,
         status_history=[
             CustomerTicketStatusEvent(
                 previous_status=change.previous_status,
@@ -1209,7 +1267,9 @@ def _customer_ticket_summary(ticket: SupportTicket) -> CustomerTicketSummary:
     updated_at = max(
         [ticket.created_at]
         + [change.changed_at for change in ticket.status_history]
+        + ([ticket.updated_at] if ticket.updated_at else [])
         + ([ticket.customer_update.created_at] if ticket.customer_update else [])
+        + [message.created_at for message in ticket.messages]
     )
     return CustomerTicketSummary(
         ticket_id=ticket.ticket_id,

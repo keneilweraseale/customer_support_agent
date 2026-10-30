@@ -81,6 +81,97 @@ export async function login(email, password) {
   return data;
 }
 
+export async function loginSupportAgent(email, password) {
+  const data = await postJson("/api/auth/support-agent/login", { email, password });
+  if (
+    typeof data.authorization_token !== "string"
+    || typeof data.expires_at !== "string"
+  ) {
+    throw new Error("We received an unexpected login response. Please try again.");
+  }
+  return data;
+}
+
+export async function getAdminDashboardStats(authorizationToken) {
+  return authorizedJson("/api/admin/dashboard/stats", authorizationToken);
+}
+
+export async function getAdminTickets(authorizationToken, filters = {}) {
+  const parameters = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== "" && value != null) parameters.set(key, value);
+  }
+  const suffix = parameters.size ? `?${parameters.toString()}` : "";
+  const data = await authorizedJson(
+    `/api/admin/tickets${suffix}`,
+    authorizationToken,
+  );
+  if (!Array.isArray(data.tickets) || typeof data.total !== "number") {
+    throw new Error("We received an unexpected ticket list.");
+  }
+  return data;
+}
+
+export async function getAdminTicket(ticketId, authorizationToken) {
+  return authorizedJson(
+    `/api/admin/tickets/${encodeURIComponent(ticketId)}`,
+    authorizationToken,
+  );
+}
+
+export async function getSupportAgents(authorizationToken) {
+  return authorizedJson("/api/admin/agents", authorizationToken);
+}
+
+export async function getAdminCategories(authorizationToken) {
+  return authorizedJson("/api/admin/categories", authorizationToken);
+}
+
+export async function updateAdminTicketStatus(ticketId, body, authorizationToken) {
+  return authorizedJson(
+    `/api/admin/tickets/${encodeURIComponent(ticketId)}/status`,
+    authorizationToken,
+    "PATCH",
+    body,
+  );
+}
+
+export async function updateAdminTicketPriority(ticketId, priority, authorizationToken) {
+  return authorizedJson(
+    `/api/admin/tickets/${encodeURIComponent(ticketId)}/priority`,
+    authorizationToken,
+    "PATCH",
+    { priority },
+  );
+}
+
+export async function assignAdminTicket(ticketId, assignedTo, authorizationToken) {
+  return authorizedJson(
+    `/api/admin/tickets/${encodeURIComponent(ticketId)}/assign`,
+    authorizationToken,
+    "PATCH",
+    { assigned_to: assignedTo || null },
+  );
+}
+
+export async function replyToAdminTicket(ticketId, message, authorizationToken) {
+  return authorizedJson(
+    `/api/admin/tickets/${encodeURIComponent(ticketId)}/reply`,
+    authorizationToken,
+    "POST",
+    { message },
+  );
+}
+
+export async function addAdminTicketNote(ticketId, note, authorizationToken) {
+  return authorizedJson(
+    `/api/admin/tickets/${encodeURIComponent(ticketId)}/notes`,
+    authorizationToken,
+    "POST",
+    { note },
+  );
+}
+
 export async function confirmCancellation({
   orderId,
   authorizationToken,
@@ -196,6 +287,37 @@ async function getJson(url, authorizationToken) {
   try {
     response = await fetch(url, {
       headers: { Authorization: `Bearer ${authorizationToken}` },
+      signal: controller.signal,
+    });
+  } catch {
+    const error = new Error(
+      "We could not reach support or the request timed out. Please try again.",
+    );
+    error.retryable = true;
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!response.ok) throw await responseError(response);
+  try {
+    return await response.json();
+  } catch {
+    throw new Error("We received an unexpected response. Please try again.");
+  }
+}
+
+async function authorizedJson(url, authorizationToken, method = "GET", body) {
+  let response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    response = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${authorizationToken}`,
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
       signal: controller.signal,
     });
   } catch {

@@ -4,6 +4,7 @@ from app.services.conversation_memory import sanitize_sensitive_text
 from app.storage.models import (
     SupportTicket,
     SupportTicketCustomerUpdate,
+    SupportTicketMessage,
     SupportTicketStatus,
     SupportTicketStatusChange,
 )
@@ -78,15 +79,32 @@ class SupportTicketService:
             ticket.model_dump()
             | {
                 "status": status,
+                "updated_at": now,
                 "status_history": [
                     *ticket.status_history,
                     change,
                 ][-MAX_STATUS_HISTORY:],
                 "customer_update": sanitized_customer_update,
+                "messages": [
+                    *ticket.messages,
+                    *(
+                        [
+                            SupportTicketMessage(
+                                author_role="support_agent",
+                                author_id=staff_id,
+                                text=sanitize_sensitive_text(customer_update),
+                                created_at=now,
+                            )
+                        ]
+                        if customer_update and status in {"waiting_for_customer", "resolved"}
+                        else []
+                    ),
+                ][-200:],
             }
         )
         updated_ticket = self._repository.update_support_ticket(
             updated,
             expected_status=ticket.status,
+            expected_updated_at=ticket.updated_at,
         )
         return updated_ticket, updated_ticket is not None
