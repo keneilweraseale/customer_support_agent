@@ -10,7 +10,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-27T06:12:26.829399Z"
+    "created_at": "2026-10-27T06:12:26.829399Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-37EE774FB04D",
@@ -23,7 +30,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-27T07:56:27.202637Z"
+    "created_at": "2026-10-27T07:56:27.202637Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-ABD99B8CBC39",
@@ -36,7 +50,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-27T08:05:00.531465Z"
+    "created_at": "2026-10-27T08:05:00.531465Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-956F6FD1C1D1",
@@ -49,7 +70,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-27T08:10:06.462243Z"
+    "created_at": "2026-10-27T08:10:06.462243Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-F3BB6D994CF1",
@@ -62,7 +90,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-28T06:15:49.462919Z"
+    "created_at": "2026-10-28T06:15:49.462919Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-A640F38A5D49",
@@ -75,7 +110,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-28T06:33:54.413403Z"
+    "created_at": "2026-10-28T06:33:54.413403Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-C8D5BFA0A575",
@@ -88,7 +130,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-28T07:26:45.578876Z"
+    "created_at": "2026-10-28T07:26:45.578876Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-BB9D2B584F60",
@@ -101,7 +150,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-28T07:36:25.451430Z"
+    "created_at": "2026-10-28T07:36:25.451430Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-E65505F1673B",
@@ -114,7 +170,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-28T07:41:51.160948Z"
+    "created_at": "2026-10-28T07:41:51.160948Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-80128852BED9",
@@ -127,7 +190,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-28T08:12:49.225793Z"
+    "created_at": "2026-10-28T08:12:49.225793Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-B4AC6AEBA075",
@@ -140,7 +210,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-28T08:30:10.245724Z"
+    "created_at": "2026-10-28T08:30:10.245724Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-86BAA315B237",
@@ -153,7 +230,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-28T08:32:46.119023Z"
+    "created_at": "2026-10-28T08:32:46.119023Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-F1F01BBBFBA8",
@@ -166,7 +250,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-28T08:36:18.081277Z"
+    "created_at": "2026-10-28T08:36:18.081277Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-951F28EEDF66",
@@ -179,7 +270,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-28T08:51:32.516271Z"
+    "created_at": "2026-10-28T08:51:32.516271Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-AAFDF5126A4B",
@@ -192,7 +290,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-28T09:02:13.646826Z"
+    "created_at": "2026-10-28T09:02:13.646826Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-2F6B71FF0651",
@@ -205,7 +310,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-28T09:53:46.393996Z"
+    "created_at": "2026-10-28T09:53:46.393996Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-489D2DDA28B4",
@@ -259,7 +371,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-29T06:56:39.485001Z"
+    "created_at": "2026-10-29T06:56:39.485001Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-21FE66ED48EA",
@@ -303,7 +422,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-29T07:18:19.548632Z"
+    "created_at": "2026-10-29T07:18:19.548632Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-534AE5876203",
@@ -327,7 +453,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-29T12:04:38.329121Z"
+    "created_at": "2026-10-29T12:04:38.329121Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-61EF7C75E621",

@@ -47,6 +47,7 @@ class SupportRepository(Protocol):
         self,
         ticket: SupportTicket,
         expected_status: SupportTicketStatus,
+        expected_updated_at: datetime | None = None,
     ) -> SupportTicket | None: ...
 
     def get_latest_support_ticket_for_conversation(

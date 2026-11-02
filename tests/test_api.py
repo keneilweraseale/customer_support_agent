@@ -810,6 +810,137 @@ def test_support_agent_login_and_ticket_status_lifecycle(
         repository.update_support_ticket(initial_ticket, expected_status="open")
 
 
+def test_admin_ticket_workflow_is_role_protected_and_synchronized(monkeypatch) -> None:
+    from app.api import admin_tickets as admin_api
+    from app.api import authorization as authorization_api
+    from app.services.demo_authorization import DemoAuthorizationService
+
+    repository = chat_api.support_repository
+    shutil.copyfile(
+        Path(__file__).resolve().parents[1] / "data" / "orders.json",
+        repository.data_directory / "orders.json",
+    )
+    service = DemoAuthorizationService(repository)
+    service.create_account(
+        "customer@example.test",
+        "customer-password-123",
+        "CUS-DEMO-001",
+    )
+    service.create_support_agent_account(
+        "agent@example.test",
+        "support-agent-password-123",
+        "STAFF-001",
+    )
+    customer_token, _ = service.authenticate(
+        "customer@example.test",
+        "customer-password-123",
+    )
+    staff_token, _ = service.authenticate_support_agent(
+        "agent@example.test",
+        "support-agent-password-123",
+    )
+    monkeypatch.setattr(authorization_api, "demo_authorization_service", service)
+    monkeypatch.setattr(chat_api, "demo_authorization_service", service)
+    monkeypatch.setattr(admin_api, "demo_authorization_service", service)
+    monkeypatch.setattr(admin_api, "support_repository", repository)
+    repository.append_support_ticket(
+        SupportTicket(
+            ticket_id="SUP-ADMIN-SYNC-01",
+            conversation_id="admin-sync-test",
+            customer_message="My parcel arrived damaged.",
+            customer_id="CUS-DEMO-001",
+            issue_summary="Damaged parcel",
+            category="Delivery",
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+
+    no_auth = client.get("/api/admin/dashboard/stats")
+    customer_forbidden = client.get(
+        "/api/admin/dashboard/stats",
+        headers={"Authorization": f"Bearer {customer_token}"},
+    )
+    stats_before = client.get(
+        "/api/admin/dashboard/stats",
+        headers={"Authorization": f"Bearer {staff_token}"},
+    )
+    admin_list = client.get(
+        "/api/admin/tickets?search=Damaged&category=Delivery",
+        headers={"Authorization": f"Bearer {staff_token}"},
+    )
+    priority = client.patch(
+        "/api/admin/tickets/SUP-ADMIN-SYNC-01/priority",
+        headers={"Authorization": f"Bearer {staff_token}"},
+        json={"priority": "high"},
+    )
+    assignment = client.patch(
+        "/api/admin/tickets/SUP-ADMIN-SYNC-01/assign",
+        headers={"Authorization": f"Bearer {staff_token}"},
+        json={"assigned_to": "STAFF-001"},
+    )
+    reply = client.post(
+        "/api/admin/tickets/SUP-ADMIN-SYNC-01/reply",
+        headers={"Authorization": f"Bearer {staff_token}"},
+        json={"message": "We are investigating the damage."},
+    )
+    note = client.post(
+        "/api/admin/tickets/SUP-ADMIN-SYNC-01/notes",
+        headers={"Authorization": f"Bearer {staff_token}"},
+        json={"note": "Check carrier handling history."},
+    )
+    monkeypatch.setattr(chat_api, "send_support_email", lambda *args: None)
+    customer_reply = client.post(
+        "/api/support/tickets/SUP-ADMIN-SYNC-01/message",
+        json={
+            "authorization_token": customer_token,
+            "message": "I have attached the delivery photos.",
+        },
+    )
+    status_update = client.patch(
+        "/api/admin/tickets/SUP-ADMIN-SYNC-01/status",
+        headers={"Authorization": f"Bearer {staff_token}"},
+        json={"status": "investigating", "note": "Reviewing photos."},
+    )
+    customer_detail = client.get(
+        "/api/tickets/SUP-ADMIN-SYNC-01",
+        headers={"Authorization": f"Bearer {customer_token}"},
+    )
+    admin_detail = client.get(
+        "/api/admin/tickets/SUP-ADMIN-SYNC-01",
+        headers={"Authorization": f"Bearer {staff_token}"},
+    )
+    stats_after = client.get(
+        "/api/admin/dashboard/stats",
+        headers={"Authorization": f"Bearer {staff_token}"},
+    )
+
+    assert no_auth.status_code == customer_forbidden.status_code == 401
+    assert stats_before.status_code == stats_after.status_code == 200
+    assert stats_before.json()["open"] == 1
+    assert stats_after.json()["investigating"] == 1
+    assert admin_list.status_code == 200
+    assert admin_list.json()["total"] == 1
+    assert priority.status_code == assignment.status_code == 200
+    assert reply.status_code == note.status_code == status_update.status_code == 200
+    assert customer_reply.status_code == 200
+    assert customer_detail.status_code == admin_detail.status_code == 200
+    assert customer_detail.json()["status"] == "investigating"
+    assert any(
+        message["text"] == "We are investigating the damage."
+        for message in customer_detail.json()["messages"]
+    )
+    assert any(
+        message["text"] == "I have attached the delivery photos."
+        for message in customer_detail.json()["messages"]
+    )
+    assert "internal_notes" not in customer_detail.json()
+    assert admin_detail.json()["priority"] == "high"
+    assert admin_detail.json()["assigned_to"] == "STAFF-001"
+    assert admin_detail.json()["internal_notes"][0]["text"] == (
+        "Check carrier handling history."
+    )
+
+
 def test_explicit_contact_support_request_creates_ticket_even_without_model_flag(
     monkeypatch,
 ) -> None:

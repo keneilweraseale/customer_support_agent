@@ -48,5 +48,15 @@
     "description": "This good is damaged.",
     "image_filename": "6f5528ab-2302-4794-b136-65ad3b7a1471.jpg",
     "created_at": "2026-10-29T22:16:48.064217Z"
+  },
+  {
+    "report_id": "e1348ac2-e94a-4b1b-a420-f3cba102d930",
+    "idempotency_key": "61c805ca-2b0d-4626-b781-62c092fe159e",
+    "request_fingerprint": "b06b306203067f8fbb6741c81371320eafad111e3a56b1b569a5b5c0211338b3",
+    "customer_id": "CUS-DEMO-002",
+    "order_id": "ORD-1002",
+    "description": "Can return this item.",
+    "image_filename": "e1348ac2-e94a-4b1b-a420-f3cba102d930.jpg",
+    "created_at": "2026-10-30T07:14:46.263387Z"
   }
 ]

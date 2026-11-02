@@ -75,13 +75,14 @@ This repository implements the customer-support agent described in
   `SMTP_PORT` in `.env`; configure `SMTP_USERNAME` and `SMTP_PASSWORD` when
   authentication is required. `SMTP_USE_TLS` defaults to `true`;
   `SMTP_USE_SSL=true` enables implicit TLS instead. `SMTP_FROM_EMAIL` can
-  override the sender address. Email delivery must be configured for the form
-  to send messages successfully. Support staff sign in separately at
+  override the sender address. Email delivery must be configured for the customer
+  follow-up form to send messages successfully. Support staff sign in separately at
   `POST /api/auth/support-agent/login`; customer tokens cannot read staff details
   or update tickets. Staff can transition a ticket with
-  `PATCH /api/support/tickets/{ticket_id}/status`, providing a status and
+  `PATCH /api/admin/tickets/{ticket_id}/status`, providing a status and
   audit note. Moving a ticket to `waiting_for_customer` or `resolved` also
-  requires a customer-facing message. Customers can check their own ticket's
+  requires a customer-facing message. The staff dashboard is available at
+  `/admin/dashboard`. Customers can check their own ticket's
   status and latest public update at `GET /api/support/tickets/{ticket_id}/status`;
   this response does not include staff notes or conversation details. Accounts
   are provisioned with
@@ -97,9 +98,10 @@ This repository implements the customer-support agent described in
   `GET /api/tickets/{ticket_id}` returns customer-visible messages, status
   transitions, and the latest public update without staff notes or customer
   identifiers. `POST /api/support/tickets/{ticket_id}/message` reuses the
-  existing support-email flow. Replies are emailed to support but are not
-  persisted in the ticket timeline; this demo has no assignment or priority
-  workflow, so those values are not displayed. Statuses stored in JSON are
+  support-email flow and persists the customer message on that same ticket.
+  Support-agent replies, category, priority, assignment, update timestamps,
+  internal notes, and audit history are stored alongside the original record.
+  Internal notes are only returned by staff endpoints. Statuses stored in JSON are
   `open`, `investigating`, `waiting_for_customer`, `escalated`, `resolved`, and
   `closed`; the UI presents customer-friendly labels. Chat questions such as
   “What is the status of ticket SUP-...?” use the same owned records and do not
@@ -113,8 +115,8 @@ This repository implements the customer-support agent described in
   investigation is needed. The assistant does not claim that a refund was
   issued or that a human was contacted; tickets are local demo records and the
   signed-in customer can send further details directly to support by email.
-  Tickets remain in JSON; this demo does not include a staff assignment
-  workflow. Status updates are audit-recorded, require a note, and use explicit
+  Tickets remain in JSON; staff use the separate ticket dashboard to assign and
+  process them. Status updates are audit-recorded, require a note, and use explicit
   allowed transitions; JSON file locking is process-local, so multi-worker
   production deployments still need shared durable storage.
 
@@ -200,6 +202,102 @@ storage or email failures return `503`. The Postman collection includes
 **Ticket status via chat** requests. Run **Customer login** first so the
 collection's `authorizationToken` variable is populated. Replies require the
 same email configuration as the existing support form.
+
+## Product Owner Dashboard
+
+Open `http://127.0.0.1:5173/admin/dashboard` for the separate internal ticket
+workspace; the customer chatbot remains at `/`. The admin page signs in through
+the existing support-agent authentication service at
+`POST /api/auth/support-agent/login`. Customer tokens are rejected by every
+`/api/admin/*` endpoint, and the customer APIs continue to filter by the
+authenticated `customer_id`. There are no hard-coded demo staff credentials.
+Provision a staff account and enter the password interactively:
+
+```powershell
+python -m app.services.support_agent_accounts --staff-id STAFF-001 --email agent@example.com
+```
+
+Support-agent accounts have the `support_agent` role and are stored in the
+git-ignored `data/support_agents.json`. Customer accounts have the `customer`
+role and use the existing `/api/auth/login` flow.
+
+The dashboard and customer ticket page both use the same records in
+`data/support_tickets.json`. Status, assignment, priority, and messages are
+saved to that record; customer ticket lists/details and admin counts poll every
+15 seconds, with a detail refresh after each successful mutation. A response
+is only shown as successful after the backend confirms persistence. Staff notes
+are stored separately and are omitted from customer response models. Status
+changes store previous/new status, staff ID, timestamp, and the internal audit
+note. Assignment, priority, reply, and note actions also have staff audit
+events. Customer follow-up messages remain emailed to configured support and
+are now persisted to the same ticket timeline.
+
+The UI labels map to the existing persisted status values:
+
+| Dashboard label | Stored value |
+|---|---|
+| Open | `open` |
+| In Progress | `investigating` (legacy `escalated` is included) |
+| Pending Customer | `waiting_for_customer` |
+| Resolved | `resolved` |
+| Closed | `closed` |
+
+The existing transition rules remain enforced by the backend. `resolved` can
+be reopened to `open` or moved to `closed`; `closed` is terminal. Moving to
+`waiting_for_customer` or `resolved` requires a customer-visible message.
+Resolving and closing require confirmation in the dashboard.
+
+Admin API endpoints (all require `Authorization: Bearer <support-agent-token>`):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/auth/support-agent/login` | Issue a role-scoped staff token |
+| `GET` | `/api/admin/dashboard/stats` | Live counts by ticket status |
+| `GET` | `/api/admin/tickets` | Search/filter/sort/paginate tickets (`search`, `status`, `priority`, `category`, `assigned_to`, `sort_by`, `sort_order`, `page`, `page_size`) |
+| `GET` | `/api/admin/tickets/{ticket_id}` | Staff detail, public conversation, status and staff audit history, private notes |
+| `GET` | `/api/admin/agents` | Agent IDs and work emails for assignment |
+| `GET` | `/api/admin/categories` | Categories for complete filtering choices |
+| `PATCH` | `/api/admin/tickets/{ticket_id}/status` | Change status with `status`, `note`, optional `customer_message` |
+| `PATCH` | `/api/admin/tickets/{ticket_id}/priority` | Set `low`, `medium`, `high`, or `critical` |
+| `PATCH` | `/api/admin/tickets/{ticket_id}/assign` | Set `assigned_to` to a staff ID or `null` |
+| `POST` | `/api/admin/tickets/{ticket_id}/reply` | Add a customer-visible support reply |
+| `POST` | `/api/admin/tickets/{ticket_id}/notes` | Add a staff-only internal note |
+
+Example request and response for a status change:
+
+```http
+PATCH /api/admin/tickets/SUP-0738300D0849/status
+Authorization: Bearer <support-agent-token>
+Content-Type: application/json
+
+{"status":"investigating","note":"Reviewing carrier scan history."}
+```
+
+```json
+{
+  "ticket_id": "SUP-0738300D0849",
+  "status": "investigating",
+  "priority": "medium",
+  "assigned_to": null,
+  "updated_at": "2026-10-30T08:30:00Z"
+}
+```
+
+For a customer-visible response, send
+`POST /api/admin/tickets/{ticket_id}/reply` with
+`{"message":"We are checking the carrier scan history."}`. The customer then
+receives it in `GET /api/tickets/{ticket_id}` as an assistant/support message.
+`POST /api/admin/tickets/{ticket_id}/notes` accepts `{"note":"Check internal
+carrier escalation log."}`; that note is never included in customer endpoints.
+`GET /api/admin/tickets` returns `{ "tickets": [...], "total": 1, "page": 1,
+"page_size": 20 }`. The Postman collection includes support-agent login,
+admin stats/list, status, priority, assignment, reply, and internal-note
+requests. Set `staffEmail` and `staffPassword` in a private Postman environment;
+the login request stores `staffAuthorizationToken` for the admin requests.
+
+This JSON demo repository uses process-local locking. For multiple backend
+workers or production deployment, replace it with a shared transactional store
+and durable shared sessions before relying on cross-worker synchronization.
 
 ## DeepEval evaluation API (Implementation Phases 1–7)
 

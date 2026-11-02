@@ -12,6 +12,7 @@ from app.api.errors import (
     validation_exception_handler,
 )
 from app.api.authorization import router as authorization_router
+from app.api.admin_tickets import router as admin_tickets_router
 from app.api.chat import router as chat_router
 from app.api.damage_reports import router as damage_reports_router
 from app.api.health import router as health_router
@@ -44,6 +45,7 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 app.include_router(health_router)
 app.include_router(chat_router)
 app.include_router(authorization_router)
+app.include_router(admin_tickets_router)
 app.include_router(orders_router)
 app.include_router(damage_reports_router)
 app.include_router(evaluation_router)

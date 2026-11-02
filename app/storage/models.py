@@ -56,6 +56,31 @@ class SupportTicketCustomerUpdate(RecordModel):
     created_at: datetime
 
 
+class SupportTicketMessage(RecordModel):
+    author_role: Literal["customer", "support_agent"]
+    author_id: Identifier | None = None
+    text: Annotated[str, StringConstraints(min_length=1, max_length=2000)]
+    created_at: datetime
+
+
+class SupportTicketInternalNote(RecordModel):
+    staff_id: Identifier
+    text: Annotated[str, StringConstraints(min_length=1, max_length=2000)]
+    created_at: datetime
+
+
+class SupportTicketAuditEvent(RecordModel):
+    action: Literal[
+        "priority_changed",
+        "assignment_changed",
+        "reply_sent",
+        "internal_note_added",
+    ]
+    changed_by: Identifier
+    description: Annotated[str, StringConstraints(min_length=1, max_length=500)]
+    created_at: datetime
+
+
 class ConversationMemory(RecordModel):
     conversation_id: Annotated[str, StringConstraints(min_length=1, max_length=100)]
     owner_id: Identifier
@@ -137,6 +162,16 @@ class SupportTicket(RecordModel):
     )
     customer_update: SupportTicketCustomerUpdate | None = None
     created_at: datetime
+    updated_at: datetime | None = None
+    category: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=100),
+    ] = "General"
+    priority: Literal["low", "medium", "high", "critical"] = "medium"
+    assigned_to: Identifier | None = None
+    messages: list[SupportTicketMessage] = Field(default_factory=list, max_length=200)
+    internal_notes: list[SupportTicketInternalNote] = Field(default_factory=list, max_length=200)
+    audit_history: list[SupportTicketAuditEvent] = Field(default_factory=list, max_length=500)
 
 
 class DamageReport(RecordModel):
