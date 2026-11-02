@@ -334,7 +334,12 @@
     "conversation_id": "71e079ee-f8ea-4372-aefa-00075e8b89b3",
     "customer_message": "but my bank account was charged for the payment what am i supposed to do?",
     "customer_id": "CUS-DEMO-002",
+    "order_id": null,
+    "issue_summary": null,
+    "conversation_context": [],
     "status": "open",
+    "status_history": [],
+    "customer_update": null,
     "created_at": "2026-10-29T09:04:06.102348Z"
   },
   {
@@ -342,7 +347,12 @@
     "conversation_id": "f62243c1-ac1c-41f8-8f0a-b38d7c337d1f",
     "customer_message": "can you please contact customer support",
     "customer_id": "CUS-DEMO-002",
+    "order_id": null,
+    "issue_summary": null,
+    "conversation_context": [],
     "status": "open",
+    "status_history": [],
+    "customer_update": null,
     "created_at": "2026-10-29T09:18:54.675422Z"
   },
   {
@@ -350,7 +360,12 @@
     "conversation_id": "a37e499e-fb93-4095-b483-f87918e4554d",
     "customer_message": "my oder ORD-1002 payment says failed but my bank account was charged, i am so angry  i do not understand what is going on.",
     "customer_id": "CUS-DEMO-002",
+    "order_id": null,
+    "issue_summary": null,
+    "conversation_context": [],
     "status": "open",
+    "status_history": [],
+    "customer_update": null,
     "created_at": "2026-10-29T09:31:25.128104Z"
   },
   {
@@ -358,7 +373,12 @@
     "conversation_id": "8133bb75-5d69-440a-8a72-0f308ad891e4",
     "customer_message": "but in my bank account it sayd the money has been deducted from my account i am not happy with that at all and i want to know what can happen from here",
     "customer_id": "CUS-DEMO-002",
+    "order_id": null,
+    "issue_summary": null,
+    "conversation_context": [],
     "status": "open",
+    "status_history": [],
+    "customer_update": null,
     "created_at": "2026-10-29T09:54:45.394794Z"
   },
   {
@@ -366,7 +386,12 @@
     "conversation_id": "dfe39e4b-d6f7-438f-8b9f-393f8ba2eb06",
     "customer_message": "if the shipment is delayed i would like to request a refund because i needed that product quickly",
     "customer_id": "CUS-DEMO-002",
+    "order_id": null,
+    "issue_summary": null,
+    "conversation_context": [],
     "status": "open",
+    "status_history": [],
+    "customer_update": null,
     "created_at": "2026-10-29T12:36:17.394847Z"
   },
   {
@@ -374,7 +399,12 @@
     "conversation_id": "751976e4-e879-4b9e-91ae-dfde44e0ebb9",
     "customer_message": "why did the payment fail but the order is shipped",
     "customer_id": "CUS-DEMO-002",
+    "order_id": null,
+    "issue_summary": null,
+    "conversation_context": [],
     "status": "open",
+    "status_history": [],
+    "customer_update": null,
     "created_at": "2026-10-29T13:03:34.607136Z"
   },
   {
@@ -382,7 +412,46 @@
     "conversation_id": "4a5e141d-d4e1-4409-bf0e-8bcb30f46cea",
     "customer_message": "I'm really frustrated about order ORD-1002. I expected it to arrive already, but I still haven't received it. Can you check its current delivery status, explain why it's delayed, tell me when I should expect it, and let me know what happens if it never arrives? Please don't give me generic answers.",
     "customer_id": "CUS-DEMO-002",
+    "order_id": null,
+    "issue_summary": null,
+    "conversation_context": [],
     "status": "open",
+    "status_history": [],
+    "customer_update": null,
     "created_at": "2026-10-29T13:32:16.725333Z"
+  },
+  {
+    "ticket_id": "SUP-5C8712064AC7",
+    "conversation_id": "a5c420e5-6793-4d37-a6a1-14dc86db8c73",
+    "customer_message": "My order ORD-1002 says my payment has failed yet my bank account was charged how is that possible?",
+    "customer_id": "CUS-DEMO-002",
+    "order_id": "ORD-1002",
+    "issue_summary": "My order ORD-1002 says my payment has failed yet my bank account was charged how is that possible?",
+    "conversation_context": [
+      {
+        "role": "user",
+        "text": "hi how are you",
+        "created_at": "2026-11-02T07:02:40.453471Z"
+      },
+      {
+        "role": "assistant",
+        "text": "Hi there! I’m here to help with this store’s orders, deliveries, payments, returns, products, and policies. I can’t answer general questions outside those topics, but I’d be glad to help with a store-related question.",
+        "created_at": "2026-11-02T07:02:40.453471Z"
+      },
+      {
+        "role": "user",
+        "text": "My order ORD-1002 says my payment has failed yet my bank account was charged how is that possible?",
+        "created_at": "2026-11-02T07:03:16.273870Z"
+      },
+      {
+        "role": "assistant",
+        "text": "I’m sorry—that’s worrying, and I can see why it seems contradictory. Our records show order ORD-1002 as shipped, while the payment record shows the attempt failed. Those records don’t tell me why fulfillment proceeded or whether your bank’s charge is pending or settled, so I don’t want to guess. I’ve created a support ticket for the team to review the order and payment records. It will only be sent to support when you submit a message using the ticket form.",
+        "created_at": "2026-11-02T07:03:16.273870Z"
+      }
+    ],
+    "status": "open",
+    "status_history": [],
+    "customer_update": null,
+    "created_at": "2026-11-02T07:03:16.273870Z"
   }
 ]

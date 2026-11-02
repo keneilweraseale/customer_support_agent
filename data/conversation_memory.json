@@ -1,72 +1,47 @@
 [
   {
-    "conversation_id": "ee248fad-cb0a-4735-a707-52de7a54e542",
-    "owner_id": "CUS-DEMO-001",
+    "conversation_id": "a5c420e5-6793-4d37-a6a1-14dc86db8c73",
+    "owner_id": "CUS-DEMO-002",
     "turns": [
       {
         "role": "user",
-        "text": "I need to track an order",
-        "created_at": "2026-10-29T22:12:56.966162Z"
+        "text": "hi how are you",
+        "created_at": "2026-11-02T07:02:40.453471Z"
       },
       {
         "role": "assistant",
-        "text": "What is the order reference? I’ll check each part of your question together.",
-        "created_at": "2026-10-29T22:12:56.966162Z"
+        "text": "Hi there! I’m here to help with this store’s orders, deliveries, payments, returns, products, and policies. I can’t answer general questions outside those topics, but I’d be glad to help with a store-related question.",
+        "created_at": "2026-11-02T07:02:40.453471Z"
       },
       {
         "role": "user",
-        "text": "ORD-1001",
-        "created_at": "2026-10-29T22:13:37.812014Z"
+        "text": "My order ORD-1002 says my payment has failed yet my bank account was charged how is that possible?",
+        "created_at": "2026-11-02T07:03:16.293210Z"
       },
       {
         "role": "assistant",
-        "text": "Order ORD-1001 is currently cancelled.",
-        "created_at": "2026-10-29T22:13:37.812014Z"
+        "text": "I’m sorry—that’s worrying, and I can see why it seems contradictory. Our records show order ORD-1002 as shipped, while the payment record shows the attempt failed. Those records don’t tell me why fulfillment proceeded or whether your bank’s charge is pending or settled, so I don’t want to guess. I’ve created a support ticket for the team to review the order and payment records. It will only be sent to support when you submit a message using the ticket form.\n\nI’ve created support ticket SUP-5C8712064AC7. To reach a support agent, send your details using the support form below; creating the ticket alone does not notify them.",
+        "created_at": "2026-11-02T07:03:16.293210Z"
+      },
+      {
+        "role": "user",
+        "text": "what is the first text i sent you",
+        "created_at": "2026-11-02T07:04:21.270471Z"
+      },
+      {
+        "role": "assistant",
+        "text": "Your first message was: “hi how are you”",
+        "created_at": "2026-11-02T07:04:21.270471Z"
       }
     ],
     "first_user_message": {
       "role": "user",
-      "text": "I need to track an order",
-      "created_at": "2026-10-29T22:12:56.966162Z"
+      "text": "hi how are you",
+      "created_at": "2026-11-02T07:02:40.453471Z"
     },
-    "last_order_id": "ORD-1001",
-    "created_at": "2026-10-29T22:12:56.966162Z",
-    "updated_at": "2026-10-29T22:13:37.812071Z",
-    "expires_at": "2026-10-29T22:43:37.812071Z"
-  },
-  {
-    "conversation_id": "8955d6fd-db37-48d6-97ea-3c5b0d11545d",
-    "owner_id": "CUS-DEMO-001",
-    "turns": [
-      {
-        "role": "user",
-        "text": "I need to track an order",
-        "created_at": "2026-10-29T22:18:25.055662Z"
-      },
-      {
-        "role": "assistant",
-        "text": "What is the order reference? I’ll check each part of your question together.",
-        "created_at": "2026-10-29T22:18:25.055662Z"
-      },
-      {
-        "role": "user",
-        "text": "ORD-1001",
-        "created_at": "2026-10-29T22:18:31.351258Z"
-      },
-      {
-        "role": "assistant",
-        "text": "Order ORD-1001 is currently cancelled.",
-        "created_at": "2026-10-29T22:18:31.351258Z"
-      }
-    ],
-    "first_user_message": {
-      "role": "user",
-      "text": "I need to track an order",
-      "created_at": "2026-10-29T22:18:25.055662Z"
-    },
-    "last_order_id": "ORD-1001",
-    "created_at": "2026-10-29T22:18:25.055662Z",
-    "updated_at": "2026-10-29T22:18:31.351300Z",
-    "expires_at": "2026-10-29T22:48:31.351300Z"
+    "last_order_id": "ORD-1002",
+    "created_at": "2026-11-02T07:02:40.453471Z",
+    "updated_at": "2026-11-02T07:04:21.270545Z",
+    "expires_at": "2026-11-02T07:34:21.270545Z"
   }
 ]
