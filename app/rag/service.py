@@ -15,7 +15,7 @@ from app.rag.providers import (
     embedder_from_environment,
 )
 from app.rag.retrieval import HybridPolicyRetriever, HybridSearchResult
-from app.storage.json_store import JsonRepository
+from app.storage.factory import repository_from_environment
 logger = logging.getLogger(__name__)
 NO_EVIDENCE_ANSWER = (
     "I couldn’t find enough information in the approved policy documents to verify "
@@ -114,7 +114,7 @@ class PolicyAnswerService:
 
 
 def answer_policy_question(question: str) -> PolicyAnswer:
-    repository = JsonRepository()
+    repository = repository_from_environment()
     documents = repository.get_policy_documents()
     chunks = repository.get_policy_chunks()
     has_approved_chunks = any(

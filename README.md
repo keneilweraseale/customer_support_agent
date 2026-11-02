@@ -15,11 +15,14 @@ This repository implements the customer-support agent described in
   The endpoint returns grounded policy answers from Phase 5.
 - **Phase 4:** Approved Markdown/text/PDF policy ingestion with source-preserving
   Groq semantic chunking (deterministic fallback), Mistral `mistral-embed`
-  vectors, traceable metadata, and JSON persistence. PDFs must contain
+  vectors, traceable metadata, and persistence through the configured JSON or
+  MongoDB repository. PDFs must contain
   extractable text; scanned/image-only PDFs are not OCR-processed.
-- **Phase 5:** Policy chat uses approved/current chunks, cosine and BM25
+- **Phase 5:** Policy chat uses approved/current chunks, vector and BM25
   retrieval combined by reciprocal rank fusion, and Groq answers grounded in
-  retrieved evidence with source metadata. Reciprocal rank fusion uses
+  retrieved evidence with source metadata. MongoDB storage uses Atlas Vector
+  Search; JSON storage uses the existing in-process cosine search. Reciprocal
+  rank fusion uses
   `1 / (60 + rank)` for each vector/BM25 result list. If query vectors cannot
   be created or stored vectors are missing/incompatible, BM25 can still retrieve
   evidence.
@@ -37,15 +40,17 @@ This repository implements the customer-support agent described in
   after 30 minutes of inactivity by default, redacts common secret/payment
   formats, resolves follow-up references, and can recap recent exchanges when
   asked. The browser keeps the conversation ID in tab-scoped session storage so
-  the server-side JSON history remains reachable after a page reload;
-  `memory_enabled` can disable short-term storage and retrieval. The chat
-  response reports short-term use and whether cancellation history was created,
-  never the stored turns. Cancellation requests collect an
+  server-side history in the selected storage backend remains reachable after a
+  page reload; `memory_enabled` can disable short-term storage and retrieval.
+  The chat response reports short-term use and whether cancellation history was
+  created, never the stored turns. Cancellation requests collect an
   optional reason, require explicit confirmation, and persist eligibility and
-  final outcomes (`cancelled`, `declined`, `ineligible`, or `withdrawn`) in
-  `data/cancellation_history.json`. Demo cancellation history expires after
+  final outcomes (`cancelled`, `declined`, `ineligible`, or `withdrawn`) in the
+  selected repository (`data/cancellation_history.json` with JSON storage).
+  Demo cancellation history expires after
   365 days by default. These retention values are configurable through
-  `JsonRepository`; confirm business retention requirements before production.
+  `JsonRepository` when JSON storage is selected; confirm business retention
+  requirements before production.
 - **Multi-part requests and escalation context:** Combined order, delivery, and
   payment questions check each requested data source independently; policy
   questions in the same message are answered from eligible evidence or
@@ -61,10 +66,12 @@ This repository implements the customer-support agent described in
   identifies the previous lookup type and the order search selects another
   order only when exactly one safe match exists. Escalation tickets keep a
   redacted issue summary, related order reference when known, and up to 12
-  recent conversation turns in `data/support_tickets.json`.
+  recent conversation turns in the selected repository
+  (`data/support_tickets.json` with JSON storage).
 - **Human support escalation:** When policy evidence is missing, the model
   marks an answer as unverifiable, or answer generation fails, chat creates an
-  open ticket in `data/support_tickets.json` and shows an in-app message form.
+  open ticket in the selected repository (`data/support_tickets.json` with JSON
+  storage) and shows an in-app message form.
   The local ticket alone does not notify a human: the signed-in customer must
   submit the form to send details to the configured support email. The UI and
   response explain this distinction. Sensitive patterns are redacted before
@@ -132,6 +139,78 @@ password/account lifecycle before production use.
 The records in `data/` are fictional test data. They are not real customer,
 payment, product, delivery, or review records.
 Demo order and product prices use South African rand (ZAR).
+
+## MongoDB Atlas storage and policy Vector Search
+
+The application can use MongoDB Atlas for its operational records and policy
+chunks. Set the following values in your local, git-ignored `.env` file; use
+your own Atlas connection string and the exact database name you created:
+
+```dotenv
+STORAGE_BACKEND=mongodb
+MONGODB_URI=mongodb+srv://<database-user>:<encoded-password>@<cluster-host>/?retryWrites=true&w=majority
+MONGODB_DATABASE=<your-database-name>
+MONGODB_VECTOR_INDEX=policy_vector_index
+```
+
+In Atlas, add your development IP address to the project's network access list
+and create a database user with read/write access to this database. Keep the
+URI private and never commit it. The default `STORAGE_BACKEND=json` preserves
+the current behavior; selecting `mongodb` does not silently fall back to JSON
+if Atlas is unavailable.
+
+Install dependencies, then import the current JSON data once:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m app.storage.migrate_json_to_mongodb
+```
+
+The migration inserts records without overwriting existing ones. It is safe to
+rerun when every matching record is unchanged; conflicting existing records
+stop the migration and are not overwritten. It also imports damage-report
+images. The application stores customer accounts in `customers` and additionally
+creates `policychunks`, `cancellationhistory`, and `damagereports` as needed.
+Evaluation cases and evaluation-run reports remain local JSON files.
+
+Before enabling policy-vector retrieval, create an Atlas Vector Search index
+named `policy_vector_index` on the `policychunks` collection. In Atlas Data
+Explorer, choose **Create Search Index**, select **Vector Search**, and use
+this definition:
+
+```json
+{
+  "fields": [
+    {
+      "type": "vector",
+      "path": "embedding",
+      "numDimensions": 1024,
+      "similarity": "cosine"
+    },
+    {"type": "filter", "path": "embedding_model"},
+    {"type": "filter", "path": "metadata.approved"},
+    {"type": "filter", "path": "metadata.updated_at"}
+  ]
+}
+```
+
+Wait until the index status is **Ready**. Then run ingestion to re-chunk
+approved local policy sources and save their Mistral embeddings in MongoDB:
+
+```powershell
+python -m app.rag.ingestion
+```
+
+Ingestion requires `MISTRAL_API_KEY`; semantic chunking uses Groq when
+`GROQ_API_KEY` and `GROQ_MODEL` are configured and otherwise uses the existing
+deterministic chunker. Start the API with `uvicorn app.main:app --reload` and
+ask a policy question through the chat UI. Atlas Vector Search supplies the
+vector-ranked candidates; the existing BM25 retrieval and reciprocal-rank
+fusion remain in use. The search index must be ready before policy chat can use
+MongoDB vector retrieval. Policy sources can be stored under `data/` or in
+`app/policies/`; set each document's `source` field to the corresponding
+repository-relative path. Only their metadata, chunks, and embeddings are
+stored in MongoDB.
 
 ## Ticket Tracking Setup and API
 
@@ -587,13 +666,16 @@ Run policy ingestion from the project root after configuring the key:
 .\.venv\Scripts\python.exe -m app.rag.ingestion
 ```
 
-Only documents marked `"approved": true` in `data/policy_documents.json` are
-loaded. Phase 4 accepts Markdown (`.md`), plain text (`.txt`), and PDFs (`.pdf`)
-within the `data/` directory. PDF extraction reads embedded text only; scanned
+Only documents marked `"approved": true` in the selected repository are
+loaded. The JSON backend reads its registry from
+`data/policy_documents.json`; after migration, MongoDB reads `policydocuments`.
+Phase 4 accepts Markdown (`.md`), plain text (`.txt`), and PDFs (`.pdf`) within
+the local `data/` directory. PDF extraction reads embedded text only; scanned
 or image-only PDFs require OCR before ingestion. The sample policy documents
 are fictional test materials, not actual company policies. Successful
-ingestion replaces each document's existing chunks in
-`data/policy_chunks.json`; it does not duplicate chunks on repeated runs.
+ingestion replaces each document's existing chunks in the selected repository
+(the default is `data/policy_chunks.json`); it does not duplicate chunks on
+repeated runs.
 
 ## Live Picture damage reporting
 
@@ -642,14 +724,13 @@ An identical retry returns the original report identifier with `"created":
 false`. Reusing the idempotency key for different report contents returns
 `409`; expired/invalid sessions return `401`; an unknown or another customer's
 order returns `404`; invalid image data returns `422` or `415`; oversized
-images return `413`; and persistence failures return `503`. Reports and private
-image bytes are persisted separately in `data/damage_reports.json` and
-`data/damage_report_images/` via the existing JSON demo storage pattern. These
-runtime files are git-ignored and there is no public image-serving endpoint.
-This disk-backed demonstration storage is not a substitute for production
-encrypted/private object storage, retention policies, backups, or durable
-multi-process transaction handling. Submission records the report only; it
-does not approve a claim, refund, or replacement.
+images return `413`; and persistence failures return `503`. With JSON storage,
+reports and private image bytes are persisted separately in
+`data/damage_reports.json` and `data/damage_report_images/`; MongoDB stores them
+in the `damagereports` collection. There is no public image-serving endpoint.
+This demonstration storage is not a substitute for production
+encrypted/private object storage, retention policies, or backups. Submission
+records the report only; it does not approve a claim, refund, or replacement.
 
 Run backend tests from the project root:
 

@@ -153,9 +153,9 @@ class ReadOnlyCancellationPreviewTool:
     """Evaluation-only cancellation eligibility adapter with no persistence or token issuance."""
 
     def invoke(self, input: dict[str, str]) -> dict[str, object]:
-        from app.storage.json_store import JsonRepository
+        from app.storage.factory import repository_from_environment
 
-        order = JsonRepository().get_order(input["order_id"])
+        order = repository_from_environment().get_order(input["order_id"])
         if order is None or order.customer_id != input["customer_id"]:
             return {"found": False, "eligible": False}
         return {

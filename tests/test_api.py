@@ -454,8 +454,9 @@ def test_chat_uses_ord_1042_from_memory_for_live_delivery_follow_up(
     tmp_path,
 ) -> None:
     import app.agent.tools as agent_tools
+    from app.storage.json_store import JsonRepository
 
-    repository = agent_tools.JsonRepository(tmp_path)
+    repository = JsonRepository(tmp_path)
     (tmp_path / "orders.json").write_text(
         json.dumps(
             [

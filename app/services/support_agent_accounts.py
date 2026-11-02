@@ -2,7 +2,8 @@ import argparse
 from getpass import getpass
 
 from app.services.demo_authorization import DemoAuthorizationService
-from app.storage.json_store import DataStoreError, JsonRepository
+from app.storage.factory import repository_from_environment
+from app.storage.json_store import DataStoreError
 
 
 def main() -> None:
@@ -18,7 +19,7 @@ def main() -> None:
     if password != confirmation:
         parser.error("Passwords do not match.")
 
-    service = DemoAuthorizationService(JsonRepository())
+    service = DemoAuthorizationService(repository_from_environment())
     try:
         service.create_support_agent_account(
             arguments.email,

@@ -5,43 +5,53 @@
     "turns": [
       {
         "role": "user",
-        "text": "hi how are you",
-        "created_at": "2026-11-02T07:02:40.453471Z"
+        "text": "can you please contact customer support i have a complaint",
+        "created_at": "2026-11-02T08:09:59.929336Z"
+      },
+      {
+        "role": "assistant",
+        "text": "I couldn’t find enough information in the approved policy documents to verify that. Please contact support for help.\n\nI’ve created support ticket SUP-738D12823D0C. To reach a support agent, send your details using the support form below; creating the ticket alone does not notify them.",
+        "created_at": "2026-11-02T08:09:59.929336Z"
+      },
+      {
+        "role": "user",
+        "text": "i want to return this other product from your store but i need to know about your return policy",
+        "created_at": "2026-11-02T08:10:57.215957Z"
+      },
+      {
+        "role": "assistant",
+        "text": "Please provide a product reference (for example, PROD-001) so I can check current product information alongside the approved policy.",
+        "created_at": "2026-11-02T08:10:57.215957Z"
+      },
+      {
+        "role": "user",
+        "text": "for  PROD-002",
+        "created_at": "2026-11-02T08:11:14.984558Z"
       },
       {
         "role": "assistant",
         "text": "Hi there! I’m here to help with this store’s orders, deliveries, payments, returns, products, and policies. I can’t answer general questions outside those topics, but I’d be glad to help with a store-related question.",
-        "created_at": "2026-11-02T07:02:40.453471Z"
+        "created_at": "2026-11-02T08:11:14.984558Z"
       },
       {
         "role": "user",
-        "text": "My order ORD-1002 says my payment has failed yet my bank account was charged how is that possible?",
-        "created_at": "2026-11-02T07:03:16.293210Z"
+        "text": "i want to return this other product PROD-002 from your store but i need to know about your return policy",
+        "created_at": "2026-11-02T08:11:45.869768Z"
       },
       {
         "role": "assistant",
-        "text": "I’m sorry—that’s worrying, and I can see why it seems contradictory. Our records show order ORD-1002 as shipped, while the payment record shows the attempt failed. Those records don’t tell me why fulfillment proceeded or whether your bank’s charge is pending or settled, so I don’t want to guess. I’ve created a support ticket for the team to review the order and payment records. It will only be sent to support when you submit a message using the ticket form.\n\nI’ve created support ticket SUP-5C8712064AC7. To reach a support agent, send your details using the support form below; creating the ticket alone does not notify them.",
-        "created_at": "2026-11-02T07:03:16.293210Z"
-      },
-      {
-        "role": "user",
-        "text": "what is the first text i sent you",
-        "created_at": "2026-11-02T07:04:21.270471Z"
-      },
-      {
-        "role": "assistant",
-        "text": "Your first message was: “hi how are you”",
-        "created_at": "2026-11-02T07:04:21.270471Z"
+        "text": "Policy information: I couldn’t find enough information in the approved policy documents to verify that. Please contact support for help.\n\nCurrent product information: Demo desk lamp is out of stock (0 available) at 32.0 ZAR. A fictional adjustable desk lamp for testing customer support tools. Warranty: Fictional demo warranty: two years.\n\nI’ve created support ticket SUP-DCF3A2A241B3. To reach a support agent, send your details using the support form below; creating the ticket alone does not notify them.",
+        "created_at": "2026-11-02T08:11:45.869768Z"
       }
     ],
     "first_user_message": {
       "role": "user",
-      "text": "hi how are you",
-      "created_at": "2026-11-02T07:02:40.453471Z"
+      "text": "can you please contact customer support i have a complaint",
+      "created_at": "2026-11-02T08:09:59.929336Z"
     },
-    "last_order_id": "ORD-1002",
-    "created_at": "2026-11-02T07:02:40.453471Z",
-    "updated_at": "2026-11-02T07:04:21.270545Z",
-    "expires_at": "2026-11-02T07:34:21.270545Z"
+    "last_order_id": null,
+    "created_at": "2026-11-02T08:09:59.929336Z",
+    "updated_at": "2026-11-02T08:11:45.870023Z",
+    "expires_at": "2026-11-02T08:41:45.870023Z"
   }
 ]

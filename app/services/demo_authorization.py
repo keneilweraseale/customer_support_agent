@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from threading import RLock
 from typing import Literal
 
-from app.storage.json_store import JsonRepository
+from app.storage.factory import repository_from_environment
 from app.storage.models import CustomerAccount, SupportAgentAccount
 from app.storage.repository import SupportRepository
 
@@ -169,7 +169,7 @@ class DemoAuthorizationService:
             del self._tokens[token]
 
 
-demo_authorization_service = DemoAuthorizationService(JsonRepository())
+demo_authorization_service = DemoAuthorizationService(repository_from_environment())
 
 
 def _hash_password(password: str) -> str:

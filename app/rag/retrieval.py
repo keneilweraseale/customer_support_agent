@@ -117,12 +117,38 @@ class HybridPolicyRetriever:
         vector_scores: dict[int, float] = {}
         valid_vector_scores: dict[int, float] = {}
         if query_vector is not None:
-            valid_vector_scores = {
-                index: score
-                for index, chunk in enumerate(approved_chunks)
-                if chunk.embedding_model == self._embedder.model_name
-                if (score := cosine_similarity(query_vector, chunk.embedding)) is not None
-            }
+            vector_search = getattr(
+                self._repository,
+                "vector_search_policy_chunks",
+                None,
+            )
+            if callable(vector_search):
+                document_versions = {
+                    document.document_id: document.updated_at.isoformat()
+                    for document in documents.values()
+                }
+                indexed_scores = {
+                    chunk.chunk_id: score
+                    for chunk, score in vector_search(
+                        query_vector,
+                        self._embedder.model_name,
+                        self._top_k,
+                        document_versions,
+                    )
+                }
+                valid_vector_scores = {
+                    index: indexed_scores[chunk.chunk_id]
+                    for index, chunk in enumerate(approved_chunks)
+                    if chunk.chunk_id in indexed_scores
+                    and chunk.embedding_model == self._embedder.model_name
+                }
+            else:
+                valid_vector_scores = {
+                    index: score
+                    for index, chunk in enumerate(approved_chunks)
+                    if chunk.embedding_model == self._embedder.model_name
+                    if (score := cosine_similarity(query_vector, chunk.embedding)) is not None
+                }
             vector_scores = {
                 index: score
                 for index, score in valid_vector_scores.items()

@@ -12,17 +12,17 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
 from app.services.demo_authorization import demo_authorization_service
+from app.storage.factory import repository_from_environment
 from app.storage.json_store import (
     DamageReportConflictError,
     DataStoreError,
-    JsonRepository,
 )
 from app.storage.models import DamageReport
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/damage-reports", tags=["damage reports"])
-damage_repository = JsonRepository()
+damage_repository = repository_from_environment()
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_IMAGE_DATA_LENGTH = 4 * ((MAX_IMAGE_BYTES + 2) // 3) + 32
 DATA_URL_PATTERN = re.compile(r"^data:(image/jpeg|image/png);base64,([A-Za-z0-9+/=]+)$")

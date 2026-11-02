@@ -3,8 +3,8 @@
     "document_id": "demo-refund-policy",
     "title": "Fictional Demo Refund Guidance",
     "category": "refunds",
-    "source": "policies/demo-refund-policy.md",
-    "approved": false,
+    "source": "app/policies/demo-refund-policy.md",
+    "approved": true,
     "updated_at": "2026-10-22T00:00:00Z"
   },
   {
@@ -12,7 +12,7 @@
     "title": "Fictional Demo Contact Information",
     "category": "contact",
     "source": "policies/demo-contact-information.md",
-    "approved": false,
+    "approved": true,
     "updated_at": "2026-10-22T00:00:00Z"
   },
   {
@@ -20,7 +20,7 @@
     "title": "Unapproved Demo Shipping Draft",
     "category": "shipping",
     "source": "policies/demo-unapproved-shipping-draft.md",
-    "approved": false,
+    "approved": true,
     "updated_at": "2026-10-22T00:00:00Z"
   },
   {
@@ -28,7 +28,7 @@
     "title": "Customer Support AI Agent Policies",
     "category": "policies",
     "source": "policies/Policies.pdf",
-    "approved": false,
+    "approved": true,
     "updated_at": "2026-10-23T09:15:42Z"
   }
 ]

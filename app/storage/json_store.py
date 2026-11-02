@@ -31,7 +31,7 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 class DataStoreError(RuntimeError):
-    """Raised when demo JSON data cannot be read, validated, or written."""
+    """Raised when application data cannot be read, validated, or written."""
 
 
 class ConversationOwnershipError(DataStoreError):

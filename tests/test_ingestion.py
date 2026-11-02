@@ -329,8 +329,32 @@ def test_ingestion_rejects_source_path_outside_data_directory(
         FakeEmbedder(),
     )
 
-    with pytest.raises(DataStoreError, match="inside the data directory"):
+    with pytest.raises(DataStoreError, match="inside the data directory or app/policies"):
         ingestor.ingest_approved_documents()
+
+
+def test_policy_source_can_be_loaded_from_app_policies(
+    policy_data: tuple[JsonRepository, Path],
+) -> None:
+    repository, data_directory = policy_data
+    app_policy_directory = data_directory.parent / "app" / "policies"
+    app_policy_directory.mkdir(parents=True)
+    (app_policy_directory / "external-policy.md").write_text(
+        "Approved policy source.",
+        encoding="utf-8",
+    )
+    ingestor = PolicyIngestor(
+        repository,
+        data_directory,
+        FakeSemanticChunker(),
+        FakeEmbedder(),
+    )
+    document = SimpleNamespace(
+        document_id="external-policy",
+        source="app/policies/external-policy.md",
+    )
+
+    assert ingestor._read_source(document) == "Approved policy source."
 
 
 def test_pdf_source_extracts_text_from_each_page(

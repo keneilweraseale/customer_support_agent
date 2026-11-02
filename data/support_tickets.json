@@ -473,7 +473,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-29T09:04:06.102348Z"
+    "created_at": "2026-10-29T09:04:06.102348Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-01C65CCE93F1",
@@ -486,7 +493,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-29T09:18:54.675422Z"
+    "created_at": "2026-10-29T09:18:54.675422Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-DA88207C9930",
@@ -499,7 +513,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-29T09:31:25.128104Z"
+    "created_at": "2026-10-29T09:31:25.128104Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-AF50F3FA3116",
@@ -512,7 +533,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-29T09:54:45.394794Z"
+    "created_at": "2026-10-29T09:54:45.394794Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-17A2F082D9DF",
@@ -525,7 +553,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-29T12:36:17.394847Z"
+    "created_at": "2026-10-29T12:36:17.394847Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-01BE07EFCF97",
@@ -538,7 +573,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-29T13:03:34.607136Z"
+    "created_at": "2026-10-29T13:03:34.607136Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-DA64DC591596",
@@ -551,7 +593,14 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-10-29T13:32:16.725333Z"
+    "created_at": "2026-10-29T13:32:16.725333Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   },
   {
     "ticket_id": "SUP-5C8712064AC7",
@@ -585,6 +634,105 @@
     "status": "open",
     "status_history": [],
     "customer_update": null,
-    "created_at": "2026-11-02T07:03:16.273870Z"
+    "created_at": "2026-11-02T07:03:16.273870Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
+  },
+  {
+    "ticket_id": "SUP-738D12823D0C",
+    "conversation_id": "a5c420e5-6793-4d37-a6a1-14dc86db8c73",
+    "customer_message": "can you please contact customer support i have a complaint",
+    "customer_id": "CUS-DEMO-002",
+    "order_id": null,
+    "issue_summary": "can you please contact customer support i have a complaint",
+    "conversation_context": [
+      {
+        "role": "user",
+        "text": "can you please contact customer support i have a complaint",
+        "created_at": "2026-11-02T08:09:59.921259Z"
+      },
+      {
+        "role": "assistant",
+        "text": "I couldn’t find enough information in the approved policy documents to verify that. Please contact support for help.",
+        "created_at": "2026-11-02T08:09:59.921259Z"
+      }
+    ],
+    "status": "open",
+    "status_history": [],
+    "customer_update": null,
+    "created_at": "2026-11-02T08:09:59.921259Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
+  },
+  {
+    "ticket_id": "SUP-DCF3A2A241B3",
+    "conversation_id": "a5c420e5-6793-4d37-a6a1-14dc86db8c73",
+    "customer_message": "i want to return this other product PROD-002 from your store but i need to know about your return policy",
+    "customer_id": "CUS-DEMO-002",
+    "order_id": null,
+    "issue_summary": "i want to return this other product PROD-002 from your store but i need to know about your return policy",
+    "conversation_context": [
+      {
+        "role": "user",
+        "text": "can you please contact customer support i have a complaint",
+        "created_at": "2026-11-02T08:09:59.929336Z"
+      },
+      {
+        "role": "assistant",
+        "text": "I couldn’t find enough information in the approved policy documents to verify that. Please contact support for help.\n\nI’ve created support ticket SUP-738D12823D0C. To reach a support agent, send your details using the support form below; creating the ticket alone does not notify them.",
+        "created_at": "2026-11-02T08:09:59.929336Z"
+      },
+      {
+        "role": "user",
+        "text": "i want to return this other product from your store but i need to know about your return policy",
+        "created_at": "2026-11-02T08:10:57.215957Z"
+      },
+      {
+        "role": "assistant",
+        "text": "Please provide a product reference (for example, PROD-001) so I can check current product information alongside the approved policy.",
+        "created_at": "2026-11-02T08:10:57.215957Z"
+      },
+      {
+        "role": "user",
+        "text": "for  PROD-002",
+        "created_at": "2026-11-02T08:11:14.984558Z"
+      },
+      {
+        "role": "assistant",
+        "text": "Hi there! I’m here to help with this store’s orders, deliveries, payments, returns, products, and policies. I can’t answer general questions outside those topics, but I’d be glad to help with a store-related question.",
+        "created_at": "2026-11-02T08:11:14.984558Z"
+      },
+      {
+        "role": "user",
+        "text": "i want to return this other product PROD-002 from your store but i need to know about your return policy",
+        "created_at": "2026-11-02T08:11:45.863618Z"
+      },
+      {
+        "role": "assistant",
+        "text": "Policy information: I couldn’t find enough information in the approved policy documents to verify that. Please contact support for help.\n\nCurrent product information: Demo desk lamp is out of stock (0 available) at 32.0 ZAR. A fictional adjustable desk lamp for testing customer support tools. Warranty: Fictional demo warranty: two years.",
+        "created_at": "2026-11-02T08:11:45.863618Z"
+      }
+    ],
+    "status": "open",
+    "status_history": [],
+    "customer_update": null,
+    "created_at": "2026-11-02T08:11:45.863618Z",
+    "updated_at": null,
+    "category": "General",
+    "priority": "medium",
+    "assigned_to": null,
+    "messages": [],
+    "internal_notes": [],
+    "audit_history": []
   }
 ]

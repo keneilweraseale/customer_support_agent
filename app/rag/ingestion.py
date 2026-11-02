@@ -15,8 +15,10 @@ from app.rag.providers import (
     TextEmbedder,
     providers_from_environment,
 )
-from app.storage.json_store import DataStoreError, JsonRepository
+from app.storage.factory import repository_from_environment
+from app.storage.json_store import DataStoreError
 from app.storage.models import PolicyChunk, PolicyDocument
+
 
 logger = logging.getLogger(__name__)
 SUPPORTED_SOURCE_SUFFIXES = {".md", ".txt", ".pdf"}
@@ -159,10 +161,18 @@ class PolicyIngestor:
         }
 
     def _read_source(self, document: PolicyDocument) -> str:
-        source_path = (self._data_directory / document.source).resolve()
-        if not source_path.is_relative_to(self._data_directory):
+        project_directory = self._data_directory.parent
+        normalized_source = document.source.replace("\\", "/")
+        if normalized_source.startswith("app/policies/"):
+            allowed_directory = (project_directory / "app" / "policies").resolve()
+            source_path = (project_directory / normalized_source).resolve()
+        else:
+            allowed_directory = self._data_directory
+            source_path = (self._data_directory / document.source).resolve()
+        if not source_path.is_relative_to(allowed_directory):
             raise DataStoreError(
-                f"Policy source must be inside the data directory: {document.document_id}"
+                "Policy source must be inside the data directory or app/policies: "
+                f"{document.document_id}"
             )
         if source_path.suffix.lower() not in SUPPORTED_SOURCE_SUFFIXES:
             raise DataStoreError(
@@ -283,7 +293,7 @@ def main() -> None:
     chunker, embedder = providers_from_environment()
     data_directory = Path(__file__).resolve().parents[2] / "data"
     ingestor = PolicyIngestor(
-        repository=JsonRepository(data_directory),
+        repository=repository_from_environment(data_directory),
         data_directory=data_directory,
         chunker=chunker,
         embedder=embedder,

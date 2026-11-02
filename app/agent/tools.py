@@ -3,7 +3,7 @@ from datetime import datetime
 from langchain_core.tools import StructuredTool
 
 from app.services.cancellations import CancellationService
-from app.storage.json_store import JsonRepository
+from app.storage.factory import repository_from_environment
 from app.storage.models import (
     CancellationReasonCode,
     CancellationToolInput,
@@ -14,7 +14,7 @@ from app.storage.models import (
     ReviewSearchInput,
 )
 
-repository = JsonRepository()
+repository = repository_from_environment()
 cancellation_service = CancellationService(repository)
 
 

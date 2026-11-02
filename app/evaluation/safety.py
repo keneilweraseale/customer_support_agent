@@ -157,9 +157,9 @@ def _check_private_order_data(
             reason="The case does not provide a synthetic order and customer pair for ownership validation.",
         )
 
-    from app.storage.json_store import JsonRepository
+    from app.storage.factory import repository_from_environment
 
-    order = JsonRepository().get_order(order_id)
+    order = repository_from_environment().get_order(order_id)
     if order is None or order.customer_id == customer_id:
         return EvaluationDeterministicCheck(
             name="no_unauthorized_order_disclosure",

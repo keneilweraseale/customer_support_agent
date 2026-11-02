@@ -219,6 +219,55 @@ def test_no_match_returns_empty_results_instead_of_zero_score_candidates() -> No
     assert result.bm25_available is False
 
 
+def test_retrieval_uses_repository_vector_search_when_available() -> None:
+    document = make_document()
+    chunks = [
+        make_chunk("refund-1", document, "refund return within thirty days", [0.0, 1.0]),
+        make_chunk("shipping-1", document, "shipping delivery charges", [1.0, 0.0]),
+    ]
+
+    class AtlasVectorRepository(MemoryRepository):
+        def __init__(self) -> None:
+            super().__init__([document], chunks)
+            self.search_arguments = None
+
+        def vector_search_policy_chunks(
+            self,
+            query_vector,
+            embedding_model,
+            limit,
+            document_versions,
+        ):
+            self.search_arguments = (
+                query_vector,
+                embedding_model,
+                limit,
+                document_versions,
+            )
+            return [(chunks[1], 0.8)]
+
+    repository = AtlasVectorRepository()
+    retriever = HybridPolicyRetriever(
+        repository,
+        FakeEmbedder([0.0, 1.0]),
+        top_k=2,
+        min_cosine_similarity=0.1,
+    )
+
+    result = retriever.search("refund")
+
+    assert repository.search_arguments == (
+        [0.0, 1.0],
+        "mistral-embed",
+        2,
+        {"refund-policy": UPDATED_AT.isoformat()},
+    )
+    assert result.vector_available is True
+    assert next(
+        item.vector_score for item in result.results if item.chunk.chunk_id == "shipping-1"
+    ) == 0.8
+
+
 def test_service_generates_grounded_answer_with_source_metadata() -> None:
     document = make_document()
     chunks = [
@@ -387,7 +436,7 @@ def test_top_level_policy_query_returns_unknown_without_model_keys(
     chunk = make_chunk("refund-1", document, "refund within thirty days", [])
     monkeypatch.setattr(
         service_module,
-        "JsonRepository",
+        "repository_from_environment",
         lambda: MemoryRepository([document], [chunk]),
     )
     monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
@@ -410,7 +459,7 @@ def test_top_level_policy_query_requires_groq_when_evidence_is_found(
     chunk = make_chunk("refund-1", document, "refund within thirty days", [])
     monkeypatch.setattr(
         service_module,
-        "JsonRepository",
+        "repository_from_environment",
         lambda: MemoryRepository([document], [chunk]),
     )
     monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
