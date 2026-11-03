@@ -364,8 +364,15 @@ class JsonRepository(SupportRepository):
                     indent=2,
                 )
                 temporary_file.write("\n")
+            if path.exists():
+                path.unlink()
             os.replace(temporary_path, path)
         except OSError as exc:
+            try:
+                if path.exists():
+                    path.unlink()
+            except OSError:
+                pass
             raise DataStoreError(f"Could not write data file: {filename}") from exc
         finally:
             if "temporary_path" in locals() and temporary_path.exists():

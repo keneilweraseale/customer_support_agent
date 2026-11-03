@@ -185,7 +185,7 @@ class ConversationMemoryService:
     ) -> str:
         if memory is None:
             return (
-                "I can’t access an earlier message from this conversation. "
+                "I don’t have earlier messages available in this conversation. "
                 "If you remind me briefly, I’ll pick it up from there."
             )
 
@@ -215,6 +215,17 @@ class ConversationMemoryService:
 
         relevant = self._relevant_turns(message, turns, limit=1)
         if not relevant:
+            user_turns = [turn for turn in turns if turn.role == "user"]
+            assistant_turns = [turn for turn in turns if turn.role == "assistant"]
+            if user_turns and assistant_turns:
+                last_user = user_turns[-1]
+                last_assistant = assistant_turns[-1]
+                return (
+                    f"Earlier, you said: “{last_user.text}”\n"
+                    f"Earlier, I replied: “{last_assistant.text}”"
+                )
+            if user_turns:
+                return f"Earlier, you said: “{user_turns[-1].text}”"
             return (
                 "I can see this conversation, but I’m not sure which earlier detail "
                 "you mean. Could you give me a keyword or remind me briefly?"

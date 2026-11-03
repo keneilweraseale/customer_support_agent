@@ -45,7 +45,10 @@ def repository_from_environment(
         "MONGODB_VECTOR_INDEX",
         "policy_vector_index",
     ).strip()
-    directory = data_directory or Path(__file__).resolve().parents[2] / "data"
+    environment_directory = os.environ.get("CUSTOMER_SUPPORT_DATA_DIR", "").strip()
+    directory = data_directory or (
+        Path(environment_directory) if environment_directory else Path(__file__).resolve().parents[2] / "data"
+    )
     return _configured_repository(
         backend,
         uri,

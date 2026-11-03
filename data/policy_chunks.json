@@ -3,7 +3,7 @@
     "chunk_id": "customer-support-policies-chunk-001",
     "document_id": "customer-support-policies",
     "title": "Customer Support AI Agent Policies",
-    "text": "Customer Support AI Agent | Controlled draft — verify approval status before use\nCUSTOMER SUPPORT AI AGENT\nPolicies\nCategory: Policies\n1. How Long Do I Have to Make a Return?\nWe gladly accept within 30 days receipt for most items in new condition.\n2. What Items can I return?\nAPPARELS: Items must be in a new condition, unworn, not damaged and must also include original tags attached\nto them.\nShoes, Bags and Luggage: Items must be in a new condition, unworn, not damaged and must also include\noriginal tags attached to it, branded boxes and all accessories.\nElectronics: Items must be returned in their original sealed and non-activated condition. Please erase all personal\ninformation from the product and place it in the original packaging along with any manuals, accessories, and any\n\"free\" gifts supplied with the product. If the product has missing parts or is in unsellable condition when returned,\nwe cannot provide you with a refund. If you want to claim a manufacturer's warranty, we will help you contact the\nmanufacturer.\n3. What Items can’t I return?\nAPPARELS: Bodysuits, Lingerie, Jewelry, Underwear and other accessories except scarves and bags.\nCosmetics: If it is damaged or the ",
+    "text": "Customer Support AI Agent | Controlled draft \u2014 verify approval status before use\nCUSTOMER SUPPORT AI AGENT\nPolicies\nCategory: Policies\n1. How Long Do I Have to Make a Return?\nWe gladly accept within 30 days receipt for most items in new condition.\n2. What Items can I return?\nAPPARELS: Items must be in a new condition, unworn, not damaged and must also include original tags attached\nto them.\nShoes, Bags and Luggage: Items must be in a new condition, unworn, not damaged and must also include\noriginal tags attached to it, branded boxes and all accessories.\nElectronics: Items must be returned in their original sealed and non-activated condition. Please erase all personal\ninformation from the product and place it in the original packaging along with any manuals, accessories, and any\n\"free\" gifts supplied with the product. If the product has missing parts or is in unsellable condition when returned,\nwe cannot provide you with a refund. If you want to claim a manufacturer's warranty, we will help you contact the\nmanufacturer.\n3. What Items can\u2019t I return?\nAPPARELS: Bodysuits, Lingerie, Jewelry, Underwear and other accessories except scarves and bags.\nCosmetics: If it is damaged or the ",
     "embedding": [
       -0.0298919677734375,
       0.051025390625,
@@ -1032,7 +1032,7 @@
     ],
     "metadata": {
       "category": "policies",
-      "approved": true,
+      "approved": false,
       "source": "policies/Policies.pdf",
       "updated_at": "2026-10-23T09:15:42+00:00",
       "chunk_index": 0
@@ -1044,7 +1044,7 @@
     "chunk_id": "customer-support-policies-chunk-002",
     "document_id": "customer-support-policies",
     "title": "Customer Support AI Agent Policies",
-    "text": "seal has been broken\nFree Gifts: Depends on their status at the time of payment.\nCustomized Items: Order cancellation for customized items is not supported\nItems that have a sticker marked as non-returnable.\n4. How to return Items?\n1. Sign into your Customer Support account.\n2. Go to “Customer Support” Icon.\n3. Start a new chat with our agent\n4. Ask about Returns and Refunds, it will take you through a proper procedure\n\nNote: You can return items from different orders together, when the items you returned meet the\nspecified conditions. REMEMBER to keep all the items to be returned in 1 package.\n\nCustomer Support AI Agent | Controlled draft — verify approval status before use\nRefund method and timing\n\n5. What is the refund method?\n1. The refund will be sent to your Kgomo Mart wallet or original form of payment based on the refund method\nyou chose.\n2. If you did not select a refund method, we will proceed according to your choice in the refund record.\n3. Orders pard with gift cards will return as gift cards.\n\n6. When will I receive my refund?\nOnce the refund has been processed, you will receive a refund notification email / SMS. Refund time will depend on\nyour refund method and ",
+    "text": "seal has been broken\nFree Gifts: Depends on their status at the time of payment.\nCustomized Items: Order cancellation for customized items is not supported\nItems that have a sticker marked as non-returnable.\n4. How to return Items?\n1. Sign into your Customer Support account.\n2. Go to \u201cCustomer Support\u201d Icon.\n3. Start a new chat with our agent\n4. Ask about Returns and Refunds, it will take you through a proper procedure\n\nNote: You can return items from different orders together, when the items you returned meet the\nspecified conditions. REMEMBER to keep all the items to be returned in 1 package.\n\nCustomer Support AI Agent | Controlled draft \u2014 verify approval status before use\nRefund method and timing\n\n5. What is the refund method?\n1. The refund will be sent to your Kgomo Mart wallet or original form of payment based on the refund method\nyou chose.\n2. If you did not select a refund method, we will proceed according to your choice in the refund record.\n3. Orders pard with gift cards will return as gift cards.\n\n6. When will I receive my refund?\nOnce the refund has been processed, you will receive a refund notification email / SMS. Refund time will depend on\nyour refund method and ",
     "embedding": [
       -0.0249481201171875,
       0.01464080810546875,
@@ -2073,7 +2073,7 @@
     ],
     "metadata": {
       "category": "policies",
-      "approved": true,
+      "approved": false,
       "source": "policies/Policies.pdf",
       "updated_at": "2026-10-23T09:15:42+00:00",
       "chunk_index": 1
@@ -2085,7 +2085,7 @@
     "chunk_id": "customer-support-policies-chunk-003",
     "document_id": "customer-support-policies",
     "title": "Customer Support AI Agent Policies",
-    "text": "bank.\n\n7. How can I get a Refund if my Credit card or debit card is no longer valid or it has\nexpired?\nFor Security reasons, refunds can only be sent back to the original card used for purchase.\nIf your original card has expired, is locked, or is no longer valid, Contact you card issuer or bank directly. They can\nstill safely receive the funds on your behalf and will help you transfer the money to your active account.\n\n8. Exchange Eligibility?\nAn exchange may be considered when all applicable checks below are satisfied:\n• The customer provides a valid order reference, and the item can be matched to the order.\n• The item is within the exchange period defined by the business for that product or order.\n• The item meets the approved condition requirements, including packaging, accessories, and proof of\npurchase where required.\n• The requested replacement is an eligible catalogue item and is currently available, or the customer agrees\nto an approved alternative.\n• The request is not excluded by an approved product -specific rule, hygiene/safety restriction, or other lawful\nlimitation.\nExchange Process:\n• Receive the request: Ask for the order reference, item, reason for exchange, and ",
+    "text": "bank.\n\n7. How can I get a Refund if my Credit card or debit card is no longer valid or it has\nexpired?\nFor Security reasons, refunds can only be sent back to the original card used for purchase.\nIf your original card has expired, is locked, or is no longer valid, Contact you card issuer or bank directly. They can\nstill safely receive the funds on your behalf and will help you transfer the money to your active account.\n\n8. Exchange Eligibility?\nAn exchange may be considered when all applicable checks below are satisfied:\n\u2022 The customer provides a valid order reference, and the item can be matched to the order.\n\u2022 The item is within the exchange period defined by the business for that product or order.\n\u2022 The item meets the approved condition requirements, including packaging, accessories, and proof of\npurchase where required.\n\u2022 The requested replacement is an eligible catalogue item and is currently available, or the customer agrees\nto an approved alternative.\n\u2022 The request is not excluded by an approved product -specific rule, hygiene/safety restriction, or other lawful\nlimitation.\nExchange Process:\n\u2022 Receive the request: Ask for the order reference, item, reason for exchange, and ",
     "embedding": [
       -0.01218414306640625,
       0.03948974609375,
@@ -3114,7 +3114,7 @@
     ],
     "metadata": {
       "category": "policies",
-      "approved": true,
+      "approved": false,
       "source": "policies/Policies.pdf",
       "updated_at": "2026-10-23T09:15:42+00:00",
       "chunk_index": 2
@@ -3126,7 +3126,7 @@
     "chunk_id": "customer-support-policies-chunk-004",
     "document_id": "customer-support-policies",
     "title": "Customer Support AI Agent Policies",
-    "text": "any required photos or\nsupporting information.\n• Verify the order: Confirm the order and item in the order system. Do not request unnecessary personal\ninformation.\n• Check the rules: Apply the approved exchange window, product exclusions, item condition requirements, and\nany applicable legal rights.\n• Check replacement availability: Confirm the requested replacement is listed and in stock. Do not imply stock\nis reserved until the system confirms it.\n• Confirm price and charges: Explain any price difference, delivery/collection charge, or other fee only where an\napproved rule authorises it. If no rule is available, escalate rather than guess.\n• Obtain approval: Use the configured approval workflow for exceptions, defective goods, disputed cases, or\ncases requiring a manual decision.\n\nCustomer Support AI Agent | Controlled draft — verify approval status before use\n• Arrange return and replacement: Provide the approved return instructions and communicate the replacement\ndispatch or collection estimate supplied by the system.\n• Close the case: Record the decision, reason, item condition, stock check, costs, approvals, and customer\ncommunication.\n\nStock shortages and price differences\n",
+    "text": "any required photos or\nsupporting information.\n\u2022 Verify the order: Confirm the order and item in the order system. Do not request unnecessary personal\ninformation.\n\u2022 Check the rules: Apply the approved exchange window, product exclusions, item condition requirements, and\nany applicable legal rights.\n\u2022 Check replacement availability: Confirm the requested replacement is listed and in stock. Do not imply stock\nis reserved until the system confirms it.\n\u2022 Confirm price and charges: Explain any price difference, delivery/collection charge, or other fee only where an\napproved rule authorises it. If no rule is available, escalate rather than guess.\n\u2022 Obtain approval: Use the configured approval workflow for exceptions, defective goods, disputed cases, or\ncases requiring a manual decision.\n\nCustomer Support AI Agent | Controlled draft \u2014 verify approval status before use\n\u2022 Arrange return and replacement: Provide the approved return instructions and communicate the replacement\ndispatch or collection estimate supplied by the system.\n\u2022 Close the case: Record the decision, reason, item condition, stock check, costs, approvals, and customer\ncommunication.\n\nStock shortages and price differences\n",
     "embedding": [
       -0.026153564453125,
       0.06378173828125,
@@ -4155,7 +4155,7 @@
     ],
     "metadata": {
       "category": "policies",
-      "approved": true,
+      "approved": false,
       "source": "policies/Policies.pdf",
       "updated_at": "2026-10-23T09:15:42+00:00",
       "chunk_index": 3
@@ -4167,7 +4167,7 @@
     "chunk_id": "customer-support-policies-chunk-005",
     "document_id": "customer-support-policies",
     "title": "Customer Support AI Agent Policies",
-    "text": "• If the replacement is unavailable, explain that availability has not been confirmed and offer only\nalternatives permitted by the business.\n• If the replacement costs more or less, apply the approved payment, credit, or refund procedure. Do not\npromise a refund or credit without confirmation.\n• If no approved alternative or price-adjustment rule exists, refer the case to a human support agent.\n\n9. Cost, Shipping and Timing.\nAny return shipping fee, replacement delivery fee, collection charge, processing fee, or delivery estimate must\ncome from the current approved policy or the order/fulfilment system. This document does not set specific fees or\ntimelines. Support staff and the AI Agent must not make up or guarantee them.\n\n10. Records and Privacy.\n\nRecord only information needed to handle the exchange and maintain an auditable case history. Handle order\ndetails, contact information, images, and other customer data according to the platform’s privacy and data -\nretention policies. Restrict access to authorized personnel.\n\n11. Review and Approval.\nReview this policy whenever product scope, fulfilment processes, consumer -law requirements, or customer\nsupport workflows change. ",
+    "text": "\u2022 If the replacement is unavailable, explain that availability has not been confirmed and offer only\nalternatives permitted by the business.\n\u2022 If the replacement costs more or less, apply the approved payment, credit, or refund procedure. Do not\npromise a refund or credit without confirmation.\n\u2022 If no approved alternative or price-adjustment rule exists, refer the case to a human support agent.\n\n9. Cost, Shipping and Timing.\nAny return shipping fee, replacement delivery fee, collection charge, processing fee, or delivery estimate must\ncome from the current approved policy or the order/fulfilment system. This document does not set specific fees or\ntimelines. Support staff and the AI Agent must not make up or guarantee them.\n\n10. Records and Privacy.\n\nRecord only information needed to handle the exchange and maintain an auditable case history. Handle order\ndetails, contact information, images, and other customer data according to the platform\u2019s privacy and data -\nretention policies. Restrict access to authorized personnel.\n\n11. Review and Approval.\nReview this policy whenever product scope, fulfilment processes, consumer -law requirements, or customer\nsupport workflows change. ",
     "embedding": [
       -0.040191650390625,
       0.04083251953125,
@@ -5196,7 +5196,7 @@
     ],
     "metadata": {
       "category": "policies",
-      "approved": true,
+      "approved": false,
       "source": "policies/Policies.pdf",
       "updated_at": "2026-10-23T09:15:42+00:00",
       "chunk_index": 4
@@ -6237,7 +6237,7 @@
     ],
     "metadata": {
       "category": "policies",
-      "approved": true,
+      "approved": false,
       "source": "policies/Policies.pdf",
       "updated_at": "2026-10-23T09:15:42+00:00",
       "chunk_index": 5

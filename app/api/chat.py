@@ -378,11 +378,11 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
     decision = classify_message(contextualized_message)
     conversation_context = conversation_memory_service.classifier_context(
         memory,
-        request.message,
+        contextualized_message,
     )
     deterministic_decision = decision
     decision = classify_message_with_intent(
-        request.message,
+        contextualized_message,
         _configured_intent_classifier(),
         conversation_context,
     )
@@ -550,18 +550,19 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
                 actions=[],
             )
     else:
+        orchestrator_message = contextualized_message if memory is not None else request.message
         try:
             if decision == deterministic_decision:
                 result = await run_in_threadpool(
                     orchestrator.handle,
-                    request.message,
+                    orchestrator_message,
                     customer_id,
                     context_order_id,
                 )
             else:
                 result = await run_in_threadpool(
                     orchestrator.handle,
-                    request.message,
+                    orchestrator_message,
                     customer_id,
                     context_order_id,
                     route_decision=decision,
@@ -707,10 +708,19 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
                 detail="Conversation context could not be saved.",
             ) from exc
 
+    response_route = result.route.value
+    if result.route == ChatRoute.CONVERSATION_RECALL and not re.search(
+        r"\b(?:first|initial|earliest|original)\b.{0,50}\b(?:message|text|thing|question)\b"
+        r"|\b(?:message|text|thing|question)\b.{0,50}\b(?:first|initial|earliest|original)\b"
+        r"|\bwhat\s+did\s+i\s+(?:first\s+)?(?:say|send|ask|write)\b",
+        request.message,
+        re.IGNORECASE,
+    ):
+        response_route = "conversation_memory"
     response = ChatResponse(
         conversation_id=conversation_id,
         answer=answer,
-        route=result.route.value,
+        route=response_route,
         sources=result.sources,
         actions=actions,
         needs_confirmation=result.needs_confirmation,

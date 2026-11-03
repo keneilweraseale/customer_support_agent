@@ -1,3 +1,5 @@
+""" ***We might have to look into this since we were adviced to remove the support email section*** """
+
 import os
 import smtplib
 import ssl

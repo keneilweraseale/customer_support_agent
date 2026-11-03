@@ -132,6 +132,15 @@ class RouteDecision:
     order_id: str | None = None
     product_id: str | None = None
     additional_routes: tuple[ChatRoute, ...] = ()
+    subtasks: tuple[ChatRoute, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.subtasks and not self.additional_routes:
+            object.__setattr__(self, "additional_routes", self.subtasks)
+        elif self.additional_routes and not self.subtasks:
+            object.__setattr__(self, "subtasks", self.additional_routes)
+        elif self.subtasks != self.additional_routes:
+            object.__setattr__(self, "subtasks", self.additional_routes)
 
 
 @dataclass(frozen=True)
@@ -692,19 +701,17 @@ class ChatOrchestrator:
                     sources=[],
                     actions=[],
                 )
-            if order_id is None:
-                return OrchestratedChatResult(
-                    answer="What is the order reference? I’ll check each part of your question together.",
-                    route=ChatRoute.CLARIFICATION,
-                    sources=[],
-                    actions=[],
-                )
 
         answers: list[str] = []
         sources: list[dict[str, str]] = []
         needs_human_support = False
         for route in routes:
             if route in {ChatRoute.ORDER, ChatRoute.DELIVERY, ChatRoute.PAYMENT}:
+                if order_id is None:
+                    answers.append(
+                        f"{_route_label(route)}: Please provide your order reference so I can check this."
+                    )
+                    continue
                 tool, tool_name = {
                     ChatRoute.ORDER: (self._order_tool, "get_order_status"),
                     ChatRoute.DELIVERY: (self._delivery_tool, "get_delivery_status"),
@@ -717,7 +724,7 @@ class ChatOrchestrator:
                     actual_tool_calls,
                 )
                 formatted = self._format_order_result(route, result)
-                answers.append(formatted.answer)
+                answers.append(f"{_route_label(route)}: {formatted.answer}")
                 needs_human_support = needs_human_support or result.get(
                     "unavailable"
                 ) is True
@@ -730,7 +737,7 @@ class ChatOrchestrator:
                     )
                     needs_human_support = True
                 else:
-                    answers.append(f"Policy information: {policy_result.answer}")
+                    answers.append(f"Policy: {policy_result.answer}")
                     sources.extend(policy_result.sources)
                     needs_human_support = needs_human_support or getattr(
                         policy_result,
@@ -762,6 +769,13 @@ class ChatOrchestrator:
                     actual_tool_calls,
                 )
                 answers.append(self._format_review_result(result).answer)
+
+        if _requests_address_change(message):
+            answers.append(
+                "Address change: I can’t change a delivery address through this demo system. "
+                "I’m escalating the request so support can check whether the address can still be updated."
+            )
+            needs_human_support = True
 
         return OrchestratedChatResult(
             answer="\n\n".join(answers),
@@ -1340,6 +1354,7 @@ class ChatOrchestrator:
             )
         if has_any(message, CANCEL_WORDS) and decision.order_id is None:
             return "Which order would you like to check for cancellation? Please provide its order reference."
+        greeting_prefix = "Hi! " if re.match(r"^(?:hi|hello|hey)(?: there)?[!.,\s]*", message, re.IGNORECASE) else ""
         if has_any(message, DELIVERY_WORDS + PAYMENT_WORDS + ORDER_WORDS):
             if customer_id is None:
                 answer = "Please sign in and provide your order reference so I can look up private order information."
@@ -1348,9 +1363,9 @@ class ChatOrchestrator:
             if _is_repeated_delivery_complaint(message):
                 return (
                     "I’m sorry this has happened repeatedly; I understand why "
-                    f"it’s frustrating. {answer}"
+                    f"it’s frustrating. {greeting_prefix}{answer}"
                 )
-            return answer
+            return f"{greeting_prefix}{answer}"
         if has_any(message, PRODUCT_WORDS) and decision.product_id is None:
             return "Please provide the product reference (for example, PROD-001)."
         return "I couldn’t determine what information you need. Could you clarify your question?"
@@ -1428,8 +1443,13 @@ def classify_message_with_intent(
 
 
 def classify_message(message: str) -> RouteDecision:
+    stripped_message = _strip_leading_closing_phrase(message)
+    if stripped_message is not None:
+        if not stripped_message.strip():
+            return RouteDecision(ChatRoute.CLOSING)
+        message = stripped_message.strip()
     normalized = message.casefold()
-    if CLOSING_MESSAGE_PATTERN.fullmatch(message.strip()):
+    if _is_pure_closing_message(message):
         return RouteDecision(ChatRoute.CLOSING)
 
     if re.search(
@@ -1502,6 +1522,22 @@ def classify_message(message: str) -> RouteDecision:
     if has_product_intent and has_policy_intent and product_id:
         return RouteDecision(ChatRoute.MIXED, order_id, product_id)
 
+    if (
+        re.search(r"(?:^|\s)(?:hi|hello|hey|good morning|good afternoon|good evening)\b", normalized)
+        and re.search(r"\b(?:can you help|help me|i need help)\b", normalized)
+        and (has_order_intent or has_delivery_intent or has_payment_intent)
+        and not order_id
+    ):
+        return RouteDecision(ChatRoute.CLARIFICATION, order_id, product_id)
+    if (
+        has_order_intent
+        and has_delivery_intent
+        and not has_payment_intent
+        and not re.search(r"\b(?:and|,|;)\b", normalized)
+        and re.search(r"\b(?:track|tracking|deliver(?:y|ies)|shipment|parcel|package)\b", normalized)
+    ):
+        return RouteDecision(ChatRoute.DELIVERY, order_id, product_id)
+
     order_tasks: list[ChatRoute] = []
     if (
         has_order_intent
@@ -1546,6 +1582,39 @@ def classify_message(message: str) -> RouteDecision:
     if re.fullmatch(r"(?:can you help|help me|i need help)[?.! ]*", normalized):
         return RouteDecision(ChatRoute.CLARIFICATION, order_id, product_id)
     return RouteDecision(ChatRoute.OUT_OF_SCOPE, order_id, product_id)
+
+
+def _strip_leading_closing_phrase(message: str) -> str | None:
+    stripped = message.strip()
+    if not stripped:
+        return None
+    match = re.match(
+        r"^(?:"
+        r"(?:thank\s+you|thanks?)(?:\s+(?:so much|very much|a lot|again|"
+        r"for (?:your )?(?:help|support|everything|that)))?"
+        r"|bye(?:\s+bye)?|goodbye|see you(?:\s+(?:later|soon|next time))?"
+        r"|take care|have a (?:nice|great|good|lovely) day"
+        r")(?:(?:[\s,!.]+)(.*))?$",
+        stripped,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    remainder = (match.group(1) or "").strip()
+    return remainder if remainder else ""
+
+
+def _is_pure_closing_message(message: str) -> bool:
+    stripped = message.strip()
+    if not stripped:
+        return False
+    if not CLOSING_MESSAGE_PATTERN.fullmatch(stripped):
+        return False
+    return not re.search(
+        r"\b(?:can|could|please|track|order|delivery|payment|product|review|cancel|status|help|refund|return|what|when|where|how|why|is|are|do|did|does)\b",
+        message.casefold(),
+        re.IGNORECASE,
+    )
 
 
 def has_any(text: str, terms: tuple[str, ...]) -> bool:
