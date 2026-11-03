@@ -33,15 +33,15 @@ flowchart TD
 
 ## Core steps
 
-1. **Start:** The customer opens the chat UI. The FastAPI app loads its configuration, registers the routers, and exposes the chat API for the frontend. ([app/main.py](app/main.py), [app/api/chat.py](app/api/chat.py))
-2. **Receive and validate:** The `POST /api/chat` endpoint validates the incoming payload, applies moderation checks, and verifies authorization or session data before business logic runs. ([app/api/chat.py](app/api/chat.py), [app/services/moderation.py](app/services/moderation.py), [app/services/demo_authorization.py](app/services/demo_authorization.py))
-3. **Understand:** The classifier and orchestrator inspect the customer message and recent memory to route the request to policy, order, delivery, payment, product, cancellation, or escalation handling. ([app/agent/router.py](app/agent/router.py), [app/agent/intent_classifier.py](app/agent/intent_classifier.py), [app/services/conversation_memory.py](app/services/conversation_memory.py))
-4. **Retrieve or act:**
-   - **Policy:** The policy service embeds the question, retrieves approved chunks with hybrid search, and uses the grounded generator and verifier to produce a supportable answer. ([app/rag/service.py](app/rag/service.py), [app/rag/retrieval.py](app/rag/retrieval.py), [app/rag/generation.py](app/rag/generation.py))
-   - **Account or support:** Support tools read current order, delivery, payment, product, or review records from the data store. ([app/agent/tools.py](app/agent/tools.py), [app/services/customer_accounts.py](app/services/customer_accounts.py), [app/storage/repository.py](app/storage/repository.py))
-   - **Cancellation:** The workflow checks eligibility and asks for confirmation before attempting a change. ([app/services/cancellations.py](app/services/cancellations.py), [app/agent/router.py](app/agent/router.py))
-5. **Respond and retain context:** The API assembles the answer, sources, actions, and memory diagnostics, returns the response to the UI, and stores relevant conversation history when enabled. ([app/api/chat.py](app/api/chat.py), [app/services/conversation_memory.py](app/services/conversation_memory.py))
-6. **Escalate when needed:** When policy evidence is weak, the customer needs human follow-up, or a support ticket is required, the app creates a ticket and sends the appropriate update. ([app/services/support_tickets.py](app/services/support_tickets.py), [app/services/support_email.py](app/services/support_email.py))
+1. **Start:** The customer opens the chat UI. FastAPI loads configuration and registers the API routers. ([app/main.py](app/main.py))
+2. **Send a chat message:** The UI sends `POST /api/chat`; the chat endpoint validates the request, checks moderation, and handles customer authorization where required. ([app/api/chat.py](app/api/chat.py), [app/services/moderation.py](app/services/moderation.py), [app/services/demo_authorization.py](app/services/demo_authorization.py))
+3. **Understand and route:** The classifier and orchestrator use the message and available conversation context to select a policy, account-data, cancellation, or other route. ([app/agent/intent_classifier.py](app/agent/intent_classifier.py), [app/agent/router.py](app/agent/router.py), [app/services/conversation_memory.py](app/services/conversation_memory.py))
+4. **Retrieve information or take action:**
+   - **Policy questions:** The policy service searches approved chunks using hybrid retrieval and uses grounded answer generation and verification. ([app/rag/service.py](app/rag/service.py), [app/rag/retrieval.py](app/rag/retrieval.py), [app/rag/generation.py](app/rag/generation.py))
+   - **Account questions:** Support tools read current order, delivery, payment, product, or review records from the data store. ([app/agent/tools.py](app/agent/tools.py), [app/services/customer_accounts.py](app/services/customer_accounts.py), [app/storage/repository.py](app/storage/repository.py))
+   - **Cancellation:** The workflow checks eligibility and requests confirmation before attempting cancellation. ([app/services/cancellations.py](app/services/cancellations.py), [app/agent/router.py](app/agent/router.py))
+5. **Return the response and retain context:** `POST /api/chat` returns the answer, sources, actions, and memory diagnostics. Conversation context can be saved for follow-up messages. ([app/api/chat.py](app/api/chat.py), [app/services/conversation_memory.py](app/services/conversation_memory.py))
+6. **Escalate when needed:** If the agent cannot verify an answer or the customer needs human help, the app can create a support ticket and send a follow-up. ([app/services/support_tickets.py](app/services/support_tickets.py), [app/services/support_email.py](app/services/support_email.py))
 
 ## Policy preparation
 
