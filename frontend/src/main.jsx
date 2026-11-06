@@ -3,12 +3,16 @@ import { createRoot } from "react-dom/client";
 
 import App from "./App.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
+import ArchitectureDiagram from "./components/ArchitectureDiagram.jsx";
 import "./styles.css";
 import "./admin.css";
 
-const Page = window.location.pathname.startsWith("/admin")
+const path = window.location.pathname;
+const Page = path.startsWith("/admin")
   ? AdminDashboard
-  : App;
+  : path.startsWith("/architecture")
+    ? ArchitectureDiagram
+    : App;
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>

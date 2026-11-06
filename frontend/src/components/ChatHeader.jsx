@@ -38,6 +38,15 @@ function NavigationIcon({ name }) {
     );
   }
 
+  if (name === "architecture") {
+    return (
+      <svg {...sharedProps}>
+        <path d="M4 5h6v5H4zM14 14h6v5h-6zM14 3h6v5h-6z" />
+        <path d="M10 7h4M17 8v6M7 10v7h7" />
+      </svg>
+    );
+  }
+
   if (name === "sign-out") {
     return (
       <svg {...sharedProps}>
@@ -121,6 +130,10 @@ export default function ChatHeader({
               <NavigationIcon name="new-chat" />
               <span>New chat</span>
             </button>
+            <a className="sidebar-action" href="/architecture">
+              <NavigationIcon name="architecture" />
+              <span>Architecture map</span>
+            </a>
           </nav>
         ) : (
           <p className="sidebar-description">
