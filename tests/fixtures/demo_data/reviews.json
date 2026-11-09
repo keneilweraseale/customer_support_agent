@@ -1,0 +1,16 @@
+[
+  {
+    "review_id": "REV-1001",
+    "product_id": "PROD-001",
+    "rating": 5,
+    "review_text": "Fictional demo review: lightweight and easy to clean.",
+    "created_at": "2026-10-19T12:00:00Z"
+  },
+  {
+    "review_id": "REV-1002",
+    "product_id": "PROD-002",
+    "rating": 4,
+    "review_text": "Fictional demo review: bright light and simple controls.",
+    "created_at": "2026-10-20T15:30:00Z"
+  }
+]

@@ -30,8 +30,6 @@ from app.agent.router import (
 from app.rag.providers import ProviderConfigurationError
 from app.services.conversation_memory import (
     ConversationMemoryService,
-    format_conversation_recall,
-    is_conversation_recall_request,
     sanitize_sensitive_text,
     unambiguous_order_context,
 )
@@ -51,7 +49,11 @@ from app.services.support_tickets import (
     SupportTicketService,
 )
 from app.agent.tools import repository as support_repository
-from app.storage.json_store import ConversationOwnershipError, DataStoreError
+from app.storage.json_store import (
+    ConversationOwnershipError,
+    DataStoreError,
+    SupportTicketConflictError,
+)
 from app.storage.models import (
     ConversationTurn,
     SupportTicket,
@@ -340,6 +342,7 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
         ChatRoute.CANCELLATION,
         ChatRoute.BILLING_ISSUE,
         ChatRoute.CONVERSATION_RECALL,
+        ChatRoute.DAMAGE_REPORT,
     }
     if requires_authentication and request.authorization_token is None:
         raise HTTPException(
@@ -386,6 +389,13 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
         _configured_intent_classifier(),
         conversation_context,
     )
+    if (
+        contextualized_message != request.message
+        and deterministic_decision.route
+        in {ChatRoute.ORDER, ChatRoute.DELIVERY, ChatRoute.PAYMENT}
+        and decision.route in {ChatRoute.OUT_OF_SCOPE, ChatRoute.GREETING}
+    ):
+        decision = deterministic_decision
     private_order_routes = {
         ChatRoute.ORDER,
         ChatRoute.DELIVERY,
@@ -393,6 +403,7 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
         ChatRoute.CANCELLATION,
         ChatRoute.BILLING_ISSUE,
         ChatRoute.CONVERSATION_RECALL,
+        ChatRoute.DAMAGE_REPORT,
     }
     if any(
         route in private_order_routes
@@ -429,7 +440,7 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
             ChatRoute.CANCELLATION,
             ChatRoute.BILLING_ISSUE,
         }
-        and decision.order_id is None
+        and ORDER_ID_PATTERN.search(request.message) is None
         and (
             not requests_order_search(request.message)
             or requests_other_order(request.message)
@@ -551,7 +562,10 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
             )
     else:
         try:
-            if decision == deterministic_decision:
+            if (
+                decision == deterministic_decision
+                and contextualized_message == request.message
+            ):
                 result = await run_in_threadpool(
                     orchestrator.handle,
                     request.message,
@@ -577,7 +591,12 @@ async def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
     support_ticket_created = False
     explicit_escalation = (
         not ticket_follow_up
-        and decision.route not in {ChatRoute.OUT_OF_SCOPE, ChatRoute.GREETING}
+        and decision.route
+        not in {
+            ChatRoute.OUT_OF_SCOPE,
+            ChatRoute.GREETING,
+            ChatRoute.DAMAGE_REPORT,
+        }
         and has_any(request.message.casefold(), ESCALATION_WORDS)
     )
     if contains_sensitive_output(answer):

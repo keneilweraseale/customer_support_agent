@@ -1,7 +1,0 @@
-[31m[1mERROR   [0m app.rag.service:service.py:77 Grounded policy answer generation failed.
-Traceback (most recent call last):
-  File "C:\Users\KeneilweBoipeloRasea\Desktop\Gen AI\Project\app\rag\service.py", line 59, in answer
-    answer = self._generator.generate(question, search_result.results)
-  File "C:\Users\KeneilweBoipeloRasea\Desktop\Gen AI\Project\tests\test_retrieval.py", line 109, in generate
-    raise GenerationError("simulated model outage")
-app.rag.generation.GenerationError: simulated model outage

@@ -8,6 +8,7 @@ export default function MessageList({
   onConfirmCancellation,
   onCancellationDecision,
   onSupportTicketMessage,
+  onDamageReport,
   isLoading,
 }) {
   const bottomRef = useRef(null);
@@ -72,6 +73,24 @@ export default function MessageList({
                   onSend={onSupportTicketMessage}
                 />
               )}
+              {message.actions?.some(
+                (action) => action.type === "open_damage_report",
+              ) && (
+                <button
+                  disabled={isLoading}
+                  onClick={() =>
+                    onDamageReport(
+                      message.actions.find(
+                        (action) => action.type === "open_damage_report",
+                      ),
+                    )
+                  }
+                  style={styles.ticketButton}
+                  type="button"
+                >
+                  Start damage report
+                </button>
+              )}
 
               {message.error && (
                 <button
@@ -130,7 +149,8 @@ export default function MessageList({
               {message.role === "assistant" && message.sources?.length > 0 && (
                 <div style={styles.sources}>
                   <strong>Sources:</strong>{" "}
-                  {message.sources.map((source) => source.title).join(", ")}
+                  {[...new Set(message.sources.map((source) => source.title))]
+                    .join(", ")}
                 </div>
               )}
             </div>

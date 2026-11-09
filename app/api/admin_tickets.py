@@ -14,7 +14,6 @@ from app.services.support_tickets import (
 )
 from app.storage.json_store import DataStoreError, SupportTicketConflictError
 from app.storage.models import (
-    SupportAgentAccount,
     SupportTicket,
     SupportTicketAttachment,
     SupportTicketAuditEvent,

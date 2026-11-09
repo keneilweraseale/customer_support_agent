@@ -20,7 +20,7 @@ from app.services.cancellations import CancellationService
 from app.storage.json_store import DataStoreError, JsonRepository
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DATA_DIRECTORY = PROJECT_ROOT / "data"
+DATA_DIRECTORY = PROJECT_ROOT / "tests" / "fixtures" / "demo_data"
 
 
 def _reset_test_order(data_directory: Path) -> None:

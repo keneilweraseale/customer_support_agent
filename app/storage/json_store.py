@@ -596,7 +596,7 @@ class JsonRepository(SupportRepository):
 
     def get_policy_documents(self) -> list[PolicyDocument]:
         with self._write_lock:
-            return self._read_records(
+            return self._read_optional_records(
                 "policy_documents.json",
                 PolicyDocument,
                 "document_id",
@@ -604,7 +604,7 @@ class JsonRepository(SupportRepository):
 
     def get_policy_chunks(self) -> list[PolicyChunk]:
         with self._write_lock:
-            return self._read_records(
+            return self._read_optional_records(
                 "policy_chunks.json",
                 PolicyChunk,
                 "chunk_id",
@@ -616,7 +616,7 @@ class JsonRepository(SupportRepository):
         chunks: list[PolicyChunk],
     ) -> None:
         with self._write_lock:
-            current = self._read_records(
+            current = self._read_optional_records(
                 "policy_chunks.json",
                 PolicyChunk,
                 "chunk_id",

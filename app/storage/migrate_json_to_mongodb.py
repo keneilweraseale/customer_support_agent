@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 from pathlib import Path
@@ -17,8 +18,6 @@ from app.storage.models import (
     Delivery,
     Order,
     Payment,
-    PolicyChunk,
-    PolicyDocument,
     Product,
     Review,
     SupportAgentAccount,
@@ -27,17 +26,19 @@ from app.storage.models import (
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 DATA_DIRECTORY = Path(__file__).resolve().parents[2] / "data"
-OPTIONAL_DATASETS = {
-    "conversation_memory.json",
-    "cancellation_history.json",
-    "customer_accounts.json",
-    "support_agents.json",
-    "support_tickets.json",
-    "damage_reports.json",
-}
 MIGRATION_DATASETS: tuple[tuple[str, str, type[BaseModel], str], ...] = (
-    ("conversation_memory.json", "conversation_memory", ConversationMemory, "conversation_id"),
-    ("cancellation_history.json", "cancellation_history", CancellationEvent, "event_id"),
+    (
+        "conversation_memory.json",
+        "conversation_memory",
+        ConversationMemory,
+        "conversation_id",
+    ),
+    (
+        "cancellation_history.json",
+        "cancellation_history",
+        CancellationEvent,
+        "event_id",
+    ),
     ("customer_accounts.json", "customer_accounts", CustomerAccount, "customer_id"),
     ("support_agents.json", "support_agents", SupportAgentAccount, "staff_id"),
     ("support_tickets.json", "support_tickets", SupportTicket, "ticket_id"),
@@ -47,14 +48,17 @@ MIGRATION_DATASETS: tuple[tuple[str, str, type[BaseModel], str], ...] = (
     ("payments.json", "payments", Payment, "payment_id"),
     ("products.json", "products", Product, "product_id"),
     ("reviews.json", "reviews", Review, "review_id"),
-    ("policy_documents.json", "policy_documents", PolicyDocument, "document_id"),
-    ("policy_chunks.json", "policy_chunks", PolicyChunk, "chunk_id"),
 )
+OBSOLETE_DEMO_POLICY_IDS = [
+    "demo-refund-policy",
+    "demo-contact-information",
+    "demo-unapproved-shipping-draft",
+]
 
 
 def _read_dataset(filename: str, model: type[ModelT]) -> list[ModelT]:
     path = DATA_DIRECTORY / filename
-    if filename in OPTIONAL_DATASETS and not path.exists():
+    if not path.exists():
         return []
     try:
         rows = json.loads(path.read_text(encoding="utf-8"))
@@ -79,7 +83,9 @@ def _record_document(
     if isinstance(model, DamageReport):
         image_path = data_directory / "damage_report_images" / model.image_filename
         try:
-            document["image_bytes"] = image_path.read_bytes()
+            document["image_base64"] = base64.b64encode(
+                image_path.read_bytes()
+            ).decode("ascii")
         except OSError as exc:
             raise DataStoreError(
                 f"Damage report image is missing: {model.image_filename}."
@@ -95,6 +101,7 @@ def migrate_json_datasets(
     only_empty_collections: bool = False,
 ) -> dict[str, tuple[int, int]]:
     totals: dict[str, tuple[int, int]] = {}
+    migrated_images = 0
     for filename, collection_key, model, identifier_field in MIGRATION_DATASETS:
         if (
             only_empty_collections
@@ -113,7 +120,26 @@ def migrate_json_datasets(
             )
             imported += int(was_imported)
             existing_count += int(not was_imported)
+            if isinstance(record, DamageReport):
+                image_base64 = document.get("image_base64")
+                if not isinstance(image_base64, str):
+                    raise DataStoreError(
+                        f"Damage report image is invalid: {record.image_filename}."
+                    )
+                migrated_images += int(
+                    repository.ensure_damage_report_image_base64(
+                        record.report_id,
+                        image_base64,
+                    )
+                )
         totals[COLLECTIONS[collection_key]] = (imported, existing_count)
+
+    removed_documents, removed_chunks = repository.remove_policy_documents(
+        OBSOLETE_DEMO_POLICY_IDS
+    )
+    migrated_images += repository.migrate_damage_report_images_to_base64()
+    totals["obsolete_demo_policy_records"] = (removed_documents, removed_chunks)
+    totals["damage_report_images"] = (migrated_images, 0)
     return totals
 
 
@@ -135,9 +161,18 @@ def main() -> None:
     finally:
         repository.close()
     for collection, (imported, existing) in totals.items():
+        if collection == "obsolete_demo_policy_records":
+            print(
+                f"obsolete demo policies: {imported} documents and "
+                f"{existing} chunks removed"
+            )
+            continue
+        if collection == "damage_report_images":
+            print(f"damage report images: {imported} stored as base64")
+            continue
         print(
             f"{collection}: {imported} imported, "
-            f"{existing} already present and unchanged"
+            f"{existing} already present and preserved"
         )
 
 

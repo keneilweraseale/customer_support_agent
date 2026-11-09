@@ -2,9 +2,17 @@
 
 ## 1. Purpose and scope
 
-Build a customer-support chatbot that answers policy questions from approved documents and uses tools to retrieve current order, delivery, payment, inventory, product, and review information.
+The implemented application answers policy questions from an approved policy PDF
+and uses authorized tools to retrieve current order, delivery, payment, product,
+inventory, and review information. This document describes the working
+repository, not only the original proposal; production-only requirements and
+limitations are called out separately.
 
-This architecture is based on the supplied requirements. It separates the **frontend**, **Python backend**, **agent/RAG services**, and **data storage**. The first demo uses JSON files; MongoDB is a later storage target.
+The application separates the **React/Vite frontend**, **FastAPI backend**,
+**routing and RAG services**, and **storage adapters**. Operational demo data,
+customer accounts, tickets, and conversation memory use local JSON files.
+MongoDB Atlas stores policy chunks and their embeddings; the approved PDF and
+its catalog metadata remain in the repository.
 
 
 ### Functional requirements covered
@@ -22,42 +30,41 @@ This architecture is based on the supplied requirements. It separates the **fron
 | FR-15 | Unknown questions | Say when evidence is unavailable; offer human support where appropriate |
 | FR-16 | Protect customer accounts | Verify identity/authorization before revealing private order/payment details or changing an order |
 
-## 2. High-level architecture
+## 2. High-level architecture (implemented)
 
 ```mermaid
 flowchart TD
     U[Customer] --> UI[React Chat UI]
-    UI -->|HTTPS JSON request| API[FastAPI Backend]
+    UI -->|JSON request| API[FastAPI Backend]
     API --> AUTH[Input validation and authorization]
     AUTH --> ROUTER[Agent / Request Router]
     ROUTER -->|Policy or FAQ question| RAG[RAG Service]
     ROUTER -->|Order, delivery, payment, stock| TOOLS[LangChain Tools]
-    ROUTER -->|Mixed product question| BOTH[RAG + relevant tools]
+    ROUTER -->|Mixed question| BOTH[RAG + relevant tools]
     ROUTER <--> STM[Short-term conversation memory]
-    TOOLS --> LTM[Long-term cancellation history / audit records]
-    STM --> JSON
+    TOOLS --> LTM[Cancellation history / audit records]
+    STM --> JSON[(Local JSON data)]
     LTM --> JSON
-    RAG --> INGEST[Policy ingestion pipeline]
-    RAG --> RET[Hybrid retrieval: vector + BM25]
-    INGEST --> DOCS[Approved source documents]
-    INGEST --> CHUNKS[Chunking and embedding]
-    CHUNKS --> JSON[(JSON demo store)]
-    RET --> JSON
+    RAG --> RET[Hybrid retrieval: Atlas Vector Search + Atlas Search BM25]
+    INGEST[Terminal policy ingestion] --> DOCS[data/policies/Policies.pdf]
+    DOCS --> CHUNKS[Semantic chunking + Mistral embeddings]
+    CHUNKS --> MDB[(MongoDB policychunks)]
+    RET --> MDB
     TOOLS --> JSON
     BOTH --> JSON
+    BOTH --> MDB
     RAG --> GEN[LLM answer generation]
     TOOLS --> GEN
     BOTH --> GEN
     GEN --> API
     API --> UI
     UI --> U
-    JSON -. future migration .-> MDB[(MongoDB)]
 ```
 
 ### Request path in plain English
 
 1. The customer types a question into the React chatbot.
-2. React state manages the visible conversation; the frontend sends the message, `conversation_id`, and relevant recent context to the Python API as JSON. The backend is responsible for trusted memory storage and retrieval.
+2. React state manages the visible conversation; the frontend sends the message, `conversation_id`, and authorization token to the Python API as JSON. The backend is responsible for trusted memory storage and retrieval.
 3. The backend cleans and normalises the message, then loads only the short-term memory relevant to that conversation. For a cancellation, it also checks the order/action records and writes a durable cancellation record after the outcome is known.
 4. The backend validates the request and checks whether the requested information/action requires customer verification.
 5. The controlled router selects the policy or support path. For eligible,
@@ -65,35 +72,36 @@ flowchart TD
    invokes the existing LangChain `StructuredTool` objects. Policy questions
    continue through the separate approved-policy RAG pipeline. Mixed questions
    can combine both paths.
-6. RAG retrieves relevant chunks using **vector similarity and BM25 keyword search**.
-7. The generation step creates an answer from retrieved evidence and/or tool results. If evidence is missing, the agent must say so rather than inventing an answer.
+6. RAG retrieves current approved chunks using MongoDB Atlas **Vector Search and Atlas Search BM25**, combines the ranked results with reciprocal rank fusion, and retains source metadata.
+7. Groq generates an answer from retrieved evidence. A verifier checks the answer; if unsupported, the generator gets one constrained revision attempt and the revised answer is verified again. If evidence remains insufficient or a provider fails, the response is transparent and may trigger the support workflow.
 8. FastAPI returns a JSON response. The chat UI displays the answer and any next action, such as asking the customer to confirm a cancellation.
 
 ## 3. Explicit model and retrieval choices
 
 | Component | Selected provider/model | Responsibility |
 |---|---|---|
-| LLM provider | **Groq** | Hosts the chat/generation model and the LLM used for semantic chunking |
-| LLM model ID | Configurable through `GROQ_MODEL`; initial example: `openai/gpt-oss-120b` | Generates grounded customer answers and proposes semantic chunk boundaries |
+| LLM provider | **Groq** | Hosts grounded answer generation, verification, and optional bounded tool/intent selection |
+| LLM model ID | Configurable through `GROQ_MODEL`; example in `.env.example`: `openai/gpt-oss-120b` | Generates grounded customer answers; verifier model is configurable separately |
 | Embedding provider | **Mistral AI** | Converts document chunks and user queries into vectors |
 | Embedding model ID | **`mistral-embed`** | Produces embeddings for vector similarity search |
-| Chunking method | **LLM-based semantic chunking** using the configured Groq model | Proposes coherent chunk boundaries while preserving source text and metadata |
-| Keyword retrieval | **BM25** (`rank-bm25`) | Finds relevant chunks using keyword matching |
-| Vector retrieval | Cosine similarity over Mistral embeddings | Finds chunks semantically similar to the query |
-| Hybrid ranking | Reciprocal Rank Fusion (RRF) | Combines vector and BM25 ranked lists |
+| Chunking method | **Embedding-based semantic chunking** using Mistral sentence embeddings | Selects low-similarity sentence boundaries while preserving source text |
+| Keyword retrieval | **MongoDB Atlas Search BM25**; local BM25 fallback | Finds relevant chunks using keyword matching |
+| Vector retrieval | **MongoDB Atlas Vector Search**; local cosine fallback where applicable | Finds chunks semantically similar to the query |
+| Hybrid ranking | Reciprocal Rank Fusion (RRF), `1 / (60 + rank)` | Combines vector and BM25 ranked lists |
 | Agent/tool definitions | LangChain Core `StructuredTool` | Validates and executes order, delivery, payment, stock, and review lookups |
 | Tool selection | Groq function calling | Selects read-only tools in a bounded loop; Python enforces the allowlist and authorization |
 | API backend | Python + FastAPI | Validates requests and returns JSON |
-| Demo storage | JSON files | Stores operational records, source documents, chunks, metadata, and embeddings |
-| Future storage | MongoDB | Persistent records and policy chunks; vector index configuration is chosen during migration |
+| Operational demo storage | JSON files | Stores orders, deliveries, payments, products, reviews, accounts, tickets, conversation memory, and cancellation history |
+| Policy storage | MongoDB Atlas | Stores policy chunks and embeddings in `policychunks`; policy PDF and catalog are local |
 
 ### Model configuration rules
 
 - Use `GROQ_API_KEY` for Groq and `MISTRAL_API_KEY` for Mistral. Never place keys in source code or JSON files.
-- Keep `GROQ_MODEL` configurable; confirm the selected model is available in the Groq account before implementation.
+- Keep `GROQ_MODEL` configurable and confirm the selected model is available in the Groq account.
 - Use the same Mistral embedding model for document chunks and incoming queries. If the embedding model changes, re-embed all stored chunks.
-- LLM-based chunking may propose semantic boundaries, but must not rewrite, invent, or silently omit policy wording. Validate output and use a deterministic fallback if the LLM call fails.
-- Empty embedding arrays are placeholders only and must be populated during ingestion before vector search can work.
+- Semantic chunking uses Mistral embeddings, preserves source text, and fails explicitly if chunking or embedding fails; there is no non-semantic fallback.
+- In MongoDB mode the bundled catalog supplies the approved PDF metadata without requiring another MongoDB collection. Chunks must match the catalog document ID, approval status, and version.
+- The Groq answer verifier can prompt one grounded rewrite before escalation; the revised answer must pass verification or the safe fallback is used.
 
 ## 4. Technology choices
 
@@ -102,12 +110,17 @@ flowchart TD
 | Frontend | React + Vite | Component-based chat interface, message state, input, confirmation prompts |
 | API | Python + FastAPI | HTTP endpoints, validation, error responses |
 | Agent | Groq function calling + LangChain Core | Bounded tool selection/execution over `StructuredTool` definitions; no cancellation or state-changing tools are exposed |
-| RAG | Mistral `mistral-embed`, vector similarity, BM25, Groq generation | Find approved policy evidence and generate grounded answers |
-| Demo storage | JSON files | Orders, delivery updates, payments, products, reviews, policy chunks and metadata |
-| Future storage | MongoDB | Persistent structured records and policy/chunk storage; vector search configuration to be chosen during migration |
+| RAG | Mistral `mistral-embed`, Atlas Vector Search, Atlas Search BM25, Groq generation and verification | Find approved policy evidence and generate grounded answers |
+| Operational storage | Local JSON files | Orders, delivery updates, payments, products, reviews, accounts, tickets, memory, and cancellation history |
+| Policy storage | MongoDB Atlas | Policy chunks and embeddings in `policychunks`; the PDF and catalog metadata are local |
 | Endpoint testing | Postman collection JSON | Repeatable request examples |
 
-**Demo limitation:** JSON files are suitable for a small local demonstration, not concurrent production writes. A JSON-file search implementation can calculate vector similarity from stored embeddings and use BM25 over stored chunk text. This is a demo hybrid search, not MongoDB-native vector search. MongoDB indexing and production persistence are a later phase.
+**Demo limitation:** JSON files are suitable for a small local demonstration,
+not concurrent production writes. MongoDB Atlas Vector Search and Atlas Search
+indexes must both be configured and Ready for full hybrid policy retrieval.
+Local BM25 remains available as a fallback; customer sessions and cancellation
+confirmation state are process-local. These controls are not production
+authentication or durable distributed state.
 
 ## 5. Frontend:
 
@@ -207,7 +220,7 @@ Build a clean, friendly, responsive support-chat interface. It should feel like 
 
 Use FastAPI for the HTTP layer. Keep routes thin; business logic belongs in service/tool modules.
 
-Suggested structure:
+Implemented module map:
 
 ```text
 customer-support-ai-agent/
@@ -215,31 +228,34 @@ customer-support-ai-agent/
 │   ├── main.py                 # FastAPI app and route registration
 │   ├── api/
 │   │   ├── chat.py             # Chat endpoint
-│   │   ├── orders.py           # Order lookup and cancellation workflow
-│   │   ├── health.py           # Health endpoint
-│   │   └── documents.py        # Admin/demo document-ingestion endpoint, if enabled
-│   ├── schemas/                # Pydantic request/response models
+│   │   ├── orders.py           # Order and cancellation APIs
+│   │   ├── damage_reports.py   # Authenticated damage reports and images
+│   │   ├── admin_tickets.py    # Staff ticket workflow
+│   │   └── health.py           # Health endpoint
 │   ├── agent/
-│   │   ├── router.py           # Decide RAG, tool, or combined path
-│   │   ├── prompts.py          # System instructions and grounded-answer rules
-│   │   └── tools.py            # LangChain tool definitions
+│   │   ├── router.py           # Intent routing and orchestration
+│   │   ├── intent_classifier.py
+│   │   ├── tool_calling.py     # Bounded Groq read-only tool loop
+│   │   └── tools.py            # LangChain StructuredTool definitions
 │   ├── rag/
-│   │   ├── ingestion.py        # Parse, clean, LLM-assisted chunking
-│   │   ├── embeddings.py       # Create/store embeddings
-│   │   ├── retrieval.py        # Vector and BM25 retrieval
-│   │   └── generation.py       # Grounded answer generation
-│   ├── services/               # Business rules, authorization, orchestration
+│   │   ├── ingestion.py        # PDF/text parsing and semantic ingestion
+│   │   ├── providers.py        # Mistral embeddings and semantic chunking
+│   │   ├── retrieval.py        # Atlas vector + BM25 and RRF
+│   │   ├── generation.py       # Grounded answer and verifier
+│   │   └── service.py          # Policy-answer orchestration
+│   ├── services/               # Auth, memory, tickets, support email
 │   └── storage/
-│       ├── json_store.py       # Demo JSON read/write operations
-│       └── repository.py       # Storage interface for future MongoDB adapter
+│       ├── json_store.py       # Operational JSON repository
+│       ├── mongodb.py          # Policy chunks and search indexes
+│       ├── factory.py          # JSON/Mongo repository composition
+│       └── policy_catalog.py   # Approved bundled PDF metadata
 ├── data/
+│   ├── policies/Policies.pdf
 │   ├── orders.json
 │   ├── deliveries.json
 │   ├── payments.json
-│   ├── products.json
-│   ├── reviews.json
-│   ├── policy_documents.json
-│   └── policy_chunks.json
+│   ├── customer_accounts.json
+│   └── ... operational JSON datasets
 ├── frontend/
 │   ├── index.html
 │   ├── package.json
@@ -259,19 +275,22 @@ customer-support-ai-agent/
 ├── .env.example
 ├── requirements.txt
 ├── README.md
-└── architecture.md
+└── customer_support_ai_agent_architecture.md
 ```
 
 ### 5.1 Routing logic
 
-Use intent routing as a controlled decision. For an eligible read-only request,
-the LLM may select one or more tools from the application allowlist, but Python
-continues to enforce authorization, tool arguments, and action boundaries:
+Use intent routing as a controlled decision. For eligible read-only requests,
+the configured Groq function-calling loop may select from the application
+allowlist; deterministic Python routing is also available when that feature is
+disabled or fails. Python continues to enforce authorization, tool arguments,
+and action boundaries:
 
 - Policy/how-to question → RAG.
 - Order/delivery/payment/inventory lookup → corresponding LangChain tool.
 - Product details plus stock/price or policy plus current data → RAG and tool results.
 - Cancellation → authorization + eligibility check + explicit confirmation + recheck + update.
+- Damaged item with an order reference → authenticated photo damage-report flow.
 - No supported intent or no evidence → transparent fallback/human support.
 
 Do not let the LLM alone decide whether a cancellation is allowed. Enforce authorization and business rules in Python code.
@@ -301,20 +320,24 @@ Customers log in with administrator-provisioned email/password accounts. Passwor
 
 All endpoints return JSON. Use consistent HTTP status codes and response shapes. Do not return HTML error pages or internal tracebacks from API endpoints.
 
-### 6.1 Proposed endpoints
+### 6.1 Implemented and related endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | Confirm that the API is running |
 | POST | `/api/auth/login` | Verify a provisioned email/password account and issue a short-lived customer-scoped token |
 | POST | `/api/chat` | Send a message and receive an assistant response |
-| GET | `/api/orders/{order_id}` | Look up order details after authorization |
-| GET | `/api/orders/{order_id}/delivery` | Retrieve delivery information after authorization |
-| GET | `/api/orders/{order_id}/payment` | Retrieve payment information after authorization |
-| POST | `/api/orders/{order_id}/cancellation-check` | Check cancellation eligibility; does not cancel |
 | POST | `/api/orders/{order_id}/cancel` | Confirm and execute cancellation after authorization |
-| GET | `/api/products/{product_id}/availability` | Check demo inventory |
-| POST | `/api/admin/documents/ingest` | Optional protected demo ingestion endpoint |
+| POST | `/api/damage-reports` | Submit an authenticated damage description and JPEG/PNG photo |
+| GET | `/api/tickets` | List tickets for the authenticated customer |
+| GET | `/api/tickets/{ticket_id}` | Read an owned ticket and customer-visible timeline |
+| POST | `/api/support/tickets/{ticket_id}/message` | Send customer details through the configured support-email workflow |
+| POST | `/api/auth/support-agent/login` | Authenticate a provisioned support agent |
+| PATCH | `/api/admin/tickets/{ticket_id}/status` | Apply an authorized staff ticket transition |
+
+Order, delivery, payment, product, review, and policy lookups are LangChain
+tools invoked through `/api/chat`; they are not separate lookup endpoints.
+Policy ingestion is a terminal command, not an HTTP endpoint.
 
 ### 6.2 Example chat request
 
@@ -368,11 +391,14 @@ The token above is a placeholder for the API contract only. In implementation, c
 
 Import `postman/customer_support_agent.postman_collection.json` into Postman. Set `baseUrl` to `http://127.0.0.1:8000`. The collection includes example requests for health, chat, order, delivery, payment, cancellation eligibility, cancellation confirmation, and product availability. Update example IDs to match the local JSON data. These are test examples; the collection does not imply the endpoints are implemented until the corresponding phase is complete.
 
-## 8. Demo database design: JSON now, MongoDB later
+## 8. Storage design: operational JSON and MongoDB policy chunks
 
-### 7.1 JSON file organisation
+### 8.1 Operational JSON files and policy storage
 
-Use one JSON file per data category. Store arrays of objects where each object represents one record.
+Operational records are stored in JSON files under `data/`; arrays contain one
+record per object. Automated fixtures live separately under
+`tests/fixtures/demo_data/`. MongoDB mode does not move these operational
+records into MongoDB.
 
 | File | Purpose | Important fields |
 |---|---|---|
@@ -381,22 +407,35 @@ Use one JSON file per data category. Store arrays of objects where each object r
 | `payments.json` | Payment transaction state | `payment_id`, `order_id`, `payment_status`, `provider_reference`, `error_code`, `updated_at` (never store card data) |
 | `products.json` | Product catalogue | `product_id`, `name`, `description`, `price`, `currency`, `warranty_summary` |
 | `reviews.json` | Demo reviews | `review_id`, `product_id`, `rating`, `review_text`, `created_at` |
-| `policy_documents.json` | Original approved documents/metadata | `document_id`, `title`, `category`, `source`, `text`, `approved`, `updated_at` |
-| `policy_chunks.json` | Search-ready text chunks | `chunk_id`, `document_id`, `title`, `text`, `embedding`, `metadata`, `token_count` |
-| `conversation_memory.json` | Short-term context for active conversations; expires automatically | `conversation_id`, `customer/session reference`, `recent_turns`, `summary`, `updated_at`, `expires_at` |
-| `cancellation_history.json` | Long-term, auditable record of cancellation requests and outcomes | `event_id`, `order_id`, `customer_id`, `reason`, `requested_at`, `outcome`, `outcome_at`, `actor`, `request_id` |
+| `customer_accounts.json` | Provisioned demo customer accounts with salted password hashes | `customer_id`, `email`, `password_hash` |
+| `support_agents.json` | Provisioned support-agent accounts with salted password hashes | `staff_id`, `email`, `password_hash` |
+| `support_tickets.json` | Support ticket, messages, status, audit history, and attachment metadata | `ticket_id`, `customer_id`, `order_id`, `status`, `messages`, `audit` |
+| `conversation_memory.json` | Short-term context scoped to the verified customer; expires automatically | `conversation_id`, `owner_id`, `turns`, `last_order_id`, timestamps |
+| `cancellation_history.json` | Auditable cancellation requests and outcomes | `event_id`, `order_id`, `customer_id`, `reason`, `outcome`, timestamps |
+| `evaluation_cases.json`, `evaluation_runs.json` | Local evaluation inputs and run reports | Evaluation-specific schemas |
 
-### 7.2 Relationships
+The approved source is `data/policies/Policies.pdf`. Its catalog metadata is
+defined in `app/storage/policy_catalog.py`. The `MongoPolicyRepository`
+supplies this catalog entry when the PDF exists, so MongoDB requires no
+separate policy metadata collection. MongoDB collection `policychunks` stores
+only policy chunks, embeddings, and traceability metadata. JSON mode can store
+policy chunks in `data/policy_chunks.json`.
+
+### 8.2 Relationships
 
 - `orders.customer_id` identifies the customer who owns the order.
 - `order_items.order_id` points to an order and `order_items.product_id` points to a product. This supports multiple products per order; do not model a production order as if it can contain only one item.
 - `deliveries.order_id` and `payments.order_id` point to the relevant order. An order can have multiple shipments or payment attempts, so do not assume a one-to-one relationship unless the business rules guarantee it.
 - `reviews.product_id` points to the reviewed product.
-- Each policy chunk's `document_id` points to its source policy document.
+- Each policy chunk's `document_id` points to the local approved policy catalog
+  entry. Its approval flag and `updated_at` must match the catalog version.
+- A damage report verifies that the authenticated customer owns the order.
+  Operational ticket/report metadata and JPEG/PNG images remain in the local
+  JSON/file store in both storage modes; MongoDB is dedicated to policy chunks.
 
 JSON files do not enforce foreign keys. Validate references in application code and add tests for missing or mismatched IDs. Never assume an order exists merely because a customer supplied an order ID.
 
-### 7.3 Example record shapes
+### 8.3 Example record shapes
 
 `data/orders.json`
 
@@ -414,7 +453,8 @@ JSON files do not enforce foreign keys. Validate references in application code 
 ]
 ```
 
-`data/policy_chunks.json`
+Policy chunk fields in MongoDB's `policychunks` collection (or
+`data/policy_chunks.json` with JSON storage):
 
 ```json
 [
@@ -436,20 +476,18 @@ JSON files do not enforce foreign keys. Validate references in application code 
 
 Embeddings are numeric arrays generated by the configured embedding model. An empty array is a placeholder and must not be used as a valid vector. Generate embeddings during ingestion and record the embedding model name/version so vectors can be rebuilt consistently.
 
-### 7.4 Moving to MongoDB
+### 8.4 MongoDB policy retrieval configuration
 
-Create a storage/repository interface now so services do not depend directly on JSON filenames. In the future, implement a MongoDB repository with collections such as `orders`, `deliveries`, `payments`, `products`, `reviews`, `policy_documents`, and `policy_chunks`.
+The application currently uses MongoDB Atlas for policy chunk storage and
+hybrid search while retaining operational JSON files. Create exactly the
+Vector Search and Atlas Search indexes on `policychunks` described in the
+README. Vector Search filters current document IDs, embedding model, approval,
+and version metadata. Atlas Search BM25 matches `text` and `title`, filtered to
+approved/current chunks. RRF merges the two result lists. If vector embedding
+or an Atlas search path is unavailable, the retriever uses the available
+channel and local BM25 fallback where possible.
 
-During migration:
-1. Import and validate JSON records.
-2. Add indexes for IDs and common lookup fields.
-3. Configure vector search for embeddings and keep BM25 keyword retrieval available through a supported text-search/index approach.
-4. Test retrieval parity and tool results before switching traffic.
-5. Move secrets out of files and add authentication, authorization, backups, monitoring, and safe write handling.
-
-MongoDB vector-search capabilities depend on the deployment and index configuration; confirm those details when the MongoDB phase begins.
-
-## 9. RAG pipeline
+## 9. RAG pipeline (implemented)
 
 Required sequence:
 
@@ -457,42 +495,50 @@ Required sequence:
 flowchart LR
     A[Approved document] --> B[Parse]
     B --> C[Clean and normalise]
-    C --> D[LLM-assisted semantic chunking]
+    C --> D[Mistral-embedding semantic chunking]
     D --> E[Attach metadata]
     E --> F[Create embeddings]
-    F --> G[Store chunks and vectors in JSON demo store]
-    G --> H1[Vector similarity search]
-    G --> H2[BM25 keyword search]
+    F --> G[MongoDB policychunks collection]
+    G --> H1[Atlas Vector Search]
+    G --> H2[Atlas Search BM25]
     H1 --> I[Combine and rank results]
     H2 --> I
     I --> J[Build evidence context]
     J --> K[LLM answer generation]
-    K --> L[Answer with sources or transparent fallback]
+    K --> V[Verify answer against evidence]
+    V -->|supported| L[Answer with sources]
+    V -->|unsupported| R[One grounded revision and re-verification]
+    R -->|still unsupported or error| L2[Transparent fallback and support workflow]
 ```
 
 ### 8.1 Ingestion
 
-1. **Load:** accept only approved company policies, FAQs, product documents, and contact information.
-2. **Parse:** extract text from supported file types (start with TXT/Markdown/PDF as needed).
-3. **Clean:** remove repeated headers/footers, excess whitespace, and irrelevant extraction artefacts without changing policy meaning.
-4. **LLM-based semantic chunking:** use the configured Groq LLM to propose semantically coherent chunks while preserving exact source text and boundaries. Validate the result; do not let the LLM rewrite policy meaning or invent missing text. Provide a deterministic length-based fallback when the LLM is unavailable.
-5. **Metadata:** store document ID, title, category, source, approval state, update date, chunk index, and chunk ID.
-6. **Embed:** create a vector for each chunk using Mistral AI's `mistral-embed` model.
-7. **Persist:** write document/chunk metadata and vectors to the JSON demo store.
+1. **Load:** read approved document metadata from the configured repository.
+   In MongoDB mode the bundled catalog entry identifies
+   `data/policies/Policies.pdf`; JSON mode reads `data/policy_documents.json`.
+2. **Parse:** extract text from supported PDF, Markdown, or plain-text files;
+   scanned/image-only PDFs are not OCR-processed.
+3. **Clean:** normalize whitespace and remove the obsolete controlled-draft
+   approval banner without changing substantive policy text.
+4. **Semantic chunking:** use Mistral sentence embeddings to select semantic
+   boundaries while preserving source text exactly. Ingestion fails rather
+   than falling back to non-semantic chunking.
+5. **Metadata:** attach document ID, title, category, source, approval state,
+   version, chunk index, and chunk ID.
+6. **Embed and persist:** create `mistral-embed` vectors and replace that
+   document's chunks in MongoDB `policychunks` (or JSON `policy_chunks.json`).
 
 Do not treat unapproved documents as authoritative. Re-ingesting a document should replace/update its chunks predictably rather than silently creating duplicates.
 
 ### 8.2 Retrieval: hybrid vector + BM25
 
 For each question:
-1. Embed the query using the same Mistral `mistral-embed` model used for stored chunks.
-2. Compute cosine similarity between the query vector and valid stored chunk vectors; retrieve the top `k` candidates.
-3. Run BM25 keyword retrieval over chunk text; retrieve the top `k` candidates.
-4. Combine the two result lists using a documented ranking strategy, such as Reciprocal Rank Fusion (RRF), or a normalised weighted score.
-5. Remove duplicate chunk IDs and filter to approved/current documents.
-6. Send only the best evidence to generation. Keep the source metadata for the response.
+1. Embed the query using the same Mistral `mistral-embed` model as the stored chunks.
+2. Retrieve vector-ranked candidates from Atlas Vector Search and text-ranked candidates from Atlas Search BM25.
+3. Filter to approved/current document versions and combine ranked lists using RRF: `1 / (60 + rank)`.
+4. Deduplicate chunk IDs and send the top evidence, with source metadata, to answer generation and verification.
 
-If there are no valid embeddings, the vector path must report that it is unavailable; do not fabricate vector results. BM25 can still run. Add ingestion/retrieval tests for empty documents, duplicate chunks, missing embeddings, and no-match queries.
+If there are no valid embeddings or an Atlas index is unavailable, the vector path reports the problem; the available BM25 path can still retrieve evidence. Local BM25 is also used as a fallback when Atlas BM25 fails.
 
 ### 8.3 Generation
 
@@ -607,68 +653,42 @@ For each cancellation request, record the reason supplied by the customer (or a 
 - Define a response-time target with stakeholders; the requirements document does not specify a numeric target.
 - Add tests for accuracy, authorization, cancellation, tool failures, unknown questions, and correct tool selection.
 
-## 12. Phase-by-phase implementation plan
+## 12. Implementation status and roadmap
 
-### Phase 1 — Project skeleton and API contract
-- Create folders, virtual environment, dependencies, `.env.example`, README, and FastAPI app.
-- Implement `/health` and a consistent JSON error format.
-- Import the Postman collection and test `/health`.
-- **Exit check:** API starts locally and `/health` returns JSON.
+The demo application currently implements:
 
-### Phase 2 — Demo JSON data and tools
-- Create small, clearly fictional JSON datasets for orders, deliveries, payments, products, and reviews.
-- Implement JSON repository functions and input validation.
-- Build LangChain tools for status, delivery, payment, stock, and reviews.
-- Implement cancellation eligibility and confirmation as separate operations.
-- **Exit check:** tool/unit tests return correct results for existing and missing IDs.
+- FastAPI and React/Vite, with login, customer chat, support-agent ticket
+  handling, ticket tracking, and damage-photo reporting.
+- Local JSON operational data and authenticated customer/support-agent
+  accounts; customer IDs are resolved server-side from short-lived,
+  process-local sessions.
+- LangChain `StructuredTool` lookups and an optional bounded Groq
+  function-calling loop for read-only support actions.
+- Confirmation-gated cancellation and persisted cancellation outcomes.
+- Mistral embedding-based semantic ingestion of the approved policy PDF.
+- MongoDB Atlas policy-chunk storage with separate Vector Search and Atlas
+  Search BM25 indexes, reciprocal-rank fusion, and source-version filtering.
+- Groq grounded answer generation and verification, with one constrained
+  revision attempt before a safe escalation fallback.
+- Automated unit, integration, and API-level tests. A live MongoDB/Groq path
+  is configuration-dependent and must also be checked in the target
+  deployment.
 
-### Phase 3 — Chatbot frontend and API connection
-- Build the responsive React chat UI with React components and JSX.
-- Connect it to `POST /api/chat`.
-- Add quick-action chips, loading/error states, and a cancellation confirmation card.
-- **Exit check:** customer can send a message and see a JSON-backed demo answer in the UI.
+The MongoDB integration stores only policy chunks in `policychunks`. Policy
+source and approval metadata come from the bundled PDF and local catalog;
+operational data is not automatically migrated to MongoDB.
 
-### Phase 4 — Policy ingestion
-- Load approved sample policies.
-- Implement parsing, cleaning, Groq-powered LLM-based semantic chunking, metadata, Mistral `mistral-embed` embeddings, and JSON persistence.
-- Add a deterministic fallback if LLM-based chunking fails.
-- **Exit check:** ingestion produces traceable chunks and valid embeddings.
+### Remaining production-readiness work
 
-### Phase 5 — Hybrid retrieval and grounded generation
-- Implement vector similarity and BM25 retrieval.
-- Merge/rank results, filter to approved documents, and generate answers with sources.
-- Add unknown-answer and source-grounding tests.
-- **Exit check:** policy questions return supported answers; unknown questions receive a transparent fallback.
-
-### Phase 6 — Agent routing and combined answers
-- Route policy questions to approved-evidence RAG; use a bounded Groq
-  function-calling loop to select read-only LangChain tools for current data.
-- Keep authorization and state-changing workflows enforced in Python; require
-  explicit confirmation for cancellation.
-- Support questions needing both RAG and tools.
-- Add safe handling for missing data, failed tools, and ambiguous requests.
-- **Exit check:** tests verify correct routing and that the answer uses the relevant retrieved evidence/tool result.
-
-### Phase 7 — Memory and cancellation history
-- Implement short-term conversation memory with a bounded context, owner/session scope, timestamps, and TTL expiry.
-- Add follow-up tests such as “Where is my order?” followed by “What about the delivery?” and test expired/ambiguous memory.
-- Ask for a cancellation reason, allow `not_provided`, and persist the final outcome only after confirmed execution.
-- Test that cancelled, declined, ineligible, and withdrawn requests are recorded as different outcomes.
-- **Exit check:** follow-up questions use the right conversation context, expired memory is not reused, and cancellation reasons/outcomes are stored safely.
-
-### Phase 8 — Security and quality tests
-- Implement the labelled demo authorization flow and server-side cancellation checks.
-- Use a short-lived token for seeded fictional IDs; this is not production authentication.
-- Require explicit cancellation confirmation, single-use eligibility tokens, and an idempotency key for safe retries.
-- Test privacy, malformed inputs, timeouts, missing files, and failed tool calls.
-- Add endpoint and RAG evaluation cases.
-- **Exit check:** no private record is returned without authorization; cancellation never occurs without confirmation.
-
-### Phase 9 — MongoDB migration (later)
-- Implement MongoDB repository and indexes.
-- Migrate JSON records, configure vector search where supported, and retain BM25/keyword search.
-- Compare results against the JSON demo before switching.
-- **Exit check:** integration tests pass against the target MongoDB deployment.
+- Replace demo JSON records and process-local sessions/tokens with the
+  production order, identity, and durable storage systems.
+- Add durable transactional/idempotent cancellation state for multi-instance
+  deployment.
+- Integrate real payment, carrier, inventory, and email/support systems.
+- Define the legal, privacy, retention, access-control, backup, monitoring,
+  and incident-response requirements with their business owners.
+- Run reviewed answer-quality evaluations and end-to-end tests against the
+  actual Atlas indexes and provider configuration before release.
 
 ## 13. Acceptance checklist
 
@@ -679,12 +699,12 @@ For each cancellation request, record the reason supplied by the customer (or a 
 - [ ] Order, delivery, payment, product availability, and review tools read demo JSON.
 - [ ] Cancellation checks eligibility and requires explicit confirmation.
 - [ ] Policy answers use approved source documents and show source metadata.
-- [ ] RAG ingestion includes parse, clean, LLM-assisted chunking, metadata, embeddings, and storage.
+- [ ] RAG ingestion includes PDF parsing, cleaning, Mistral-embedding semantic chunking, metadata, embeddings, and storage.
 - [ ] Retrieval uses both vector similarity and BM25 with a documented merge strategy.
 - [ ] Unknown answers are transparent and can direct customers to human support.
 - [ ] Authorization and privacy checks protect customer-specific information.
 - [ ] Automated tests cover expected success, missing data, and failure paths.
-- [ ] JSON storage can be replaced by MongoDB behind a repository interface.
+- [ ] Operational JSON and MongoDB policy-chunk storage use the repository abstraction.
 - [ ] Short-term memory is conversation-scoped, bounded, expires, and is not treated as authoritative operational data.
 - [ ] Cancellation requests collect a reason when offered and record the verified outcome in long-term cancellation history.
 - [ ] Memory cannot reveal another customer's conversation or cancellation history.
@@ -898,21 +918,10 @@ Do not mark the project “production-ready” until all applicable gates pass:
 - [ ] Deployment, monitoring, backup/restore, rollback, and human-escalation procedures are documented.
 - [ ] Business owners approve the privacy, support, and operational arrangements.
 
-## 17. Updated implementation roadmap
+## 17. Production-readiness roadmap
 
-Keep the existing eight phases for the learning/demo build, then add a separate production track. This avoids making the first version too large while ensuring deployment risks are not forgotten.
-
-### Demo track — finish the learning project
-
-1. Implement the repository interface and fictional JSON records, including `order_items`.
-2. Implement read-only order, delivery, payment, inventory, and review tools.
-3. Build the React chat UI and FastAPI contract.
-4. Implement approved-document ingestion and hybrid retrieval.
-5. Add controlled routing, source-grounded responses, and transparent fallbacks.
-6. Implement the demo-only verification and cancellation confirmation flow.
-7. Add automated tests for missing data, tool errors, routing, RAG grounding, and cancellation safety.
-
-### Production-readiness track — required before real customers
+The demo track is implemented. The following work remains before real-customer
+production use:
 
 1. **Confirm integrations and ownership:** identify the real order system, carrier(s), payment provider, policy owner, and human support channel.
 2. **Implement identity and authorization:** use the platform's real customer identity; enforce object-level permissions on every endpoint/tool.

@@ -1,37 +1,35 @@
-import asyncio
 import json
 from pathlib import Path
 
-from pydantic import BaseModel
-
-from app import main
 from app.storage import factory
-from app.storage import migrate_json_to_mongodb as migration
+from app.storage.json_store import JsonRepository
+from app.storage.models import PolicyChunk
 
 
-class SeedRecord(BaseModel):
-    record_id: str
-
-
-class FakeMongoRepository:
+class FakeMongoPolicyStore:
     def __init__(self) -> None:
-        self.records: dict[str, list[dict[str, object]]] = {}
-        self.references_validated = False
+        self.chunks: list[PolicyChunk] = []
+        self.replaced: tuple[str, list[PolicyChunk]] | None = None
 
-    def migration_collection_is_empty(self, collection_name: str) -> bool:
-        return not self.records.get(collection_name)
+    def get_policy_chunks(self) -> list[PolicyChunk]:
+        return self.chunks
 
-    def import_migration_record(
+    def replace_policy_chunks(
         self,
-        collection_name: str,
-        document: dict[str, object],
-        identifier_field: str,
-    ) -> bool:
-        self.records.setdefault(collection_name, []).append(document)
-        return True
+        document_id: str,
+        chunks: list[PolicyChunk],
+    ) -> None:
+        self.replaced = (document_id, chunks)
 
-    def validate_references(self) -> None:
-        self.references_validated = True
+    def vector_search_policy_chunks(
+        self,
+        query_vector: list[float],
+        embedding_model: str = "mistral-embed",
+        limit: int = 5,
+        document_versions: dict[str, str] | None = None,
+    ) -> list[tuple[PolicyChunk, float]]:
+        del query_vector, embedding_model, limit, document_versions
+        return []
 
 
 def test_storage_defaults_to_mongodb(monkeypatch) -> None:
@@ -46,64 +44,62 @@ def test_storage_defaults_to_mongodb(monkeypatch) -> None:
     assert factory.repository_from_environment() == "mongodb"
 
 
-def test_json_datasets_seed_empty_collections_only(
+def test_json_repository_allows_tool_data_without_policy_files(
+    tmp_path: Path,
+) -> None:
+    repository = JsonRepository(tmp_path)
+
+    assert repository.get_policy_documents() == []
+    assert repository.get_policy_chunks() == []
+
+
+def test_mongodb_configuration_keeps_operational_records_in_json(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    seed_path = tmp_path / "records.json"
-    seed_path.write_text(
-        json.dumps([{"record_id": "seed-1"}]),
-        encoding="utf-8",
-    )
-    existing_repository = FakeMongoRepository()
-    existing_repository.records["orders"] = [{"record_id": "existing"}]
-    monkeypatch.setattr(migration, "DATA_DIRECTORY", tmp_path)
+    from app.storage import mongodb
+
+    json_repository = JsonRepository(tmp_path)
+    (tmp_path / "orders.json").write_text("[]", encoding="utf-8")
+    policy_store = FakeMongoPolicyStore()
+
+    def create_mongo_repository(*_, **kwargs):
+        assert kwargs["search_index_name"] == "policy_bm25_index"
+        return policy_store
+
     monkeypatch.setattr(
-        migration,
-        "MIGRATION_DATASETS",
-        (("records.json", "orders", SeedRecord, "record_id"),),
+        mongodb,
+        "MongoRepository",
+        create_mongo_repository,
+    )
+    factory._configured_repository.cache_clear()
+
+    repository = factory._configured_repository(
+        "mongodb",
+        "mongodb://example",
+        "support",
+        "policy_vector_index",
+        str(tmp_path),
     )
 
-    existing_totals = migration.migrate_json_datasets(
-        existing_repository,
-        only_empty_collections=True,
-    )
-    empty_repository = FakeMongoRepository()
-    empty_totals = migration.migrate_json_datasets(
-        empty_repository,
-        only_empty_collections=True,
-    )
-
-    assert existing_repository.records["orders"] == [{"record_id": "existing"}]
-    assert existing_totals["orders"] == (0, 0)
-    assert empty_repository.records["orders"] == [{"record_id": "seed-1"}]
-    assert empty_totals["orders"] == (1, 0)
+    assert repository.get_orders() == []
+    assert repository.get_policy_documents() == json_repository.get_policy_documents()
+    assert repository.get_policy_chunks() == []
+    repository.replace_policy_chunks("policy-1", [])
+    assert policy_store.replaced == ("policy-1", [])
+    factory._configured_repository.cache_clear()
 
 
-def test_app_startup_bootstraps_mongodb(monkeypatch) -> None:
-    repository = FakeMongoRepository()
-    seeded = False
+def test_mongodb_policy_catalog_uses_the_local_pdf_without_a_metadata_collection(
+    tmp_path: Path,
+) -> None:
+    from app.storage.factory import MongoPolicyRepository
+    from app.storage.policy_catalog import PDF_POLICY_DOCUMENT
 
-    def seed(
-        target: FakeMongoRepository,
-        *,
-        only_empty_collections: bool,
-    ) -> dict[str, tuple[int, int]]:
-        nonlocal seeded
-        assert target is repository
-        assert only_empty_collections
-        seeded = True
-        return {}
+    policy_path = tmp_path / PDF_POLICY_DOCUMENT.source
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_bytes(b"approved source")
 
-    monkeypatch.setattr(main, "MongoRepository", FakeMongoRepository)
-    monkeypatch.setattr(main, "repository_from_environment", lambda: repository)
-    monkeypatch.setattr(main, "migrate_json_datasets", seed)
+    repository = MongoPolicyRepository(tmp_path, FakeMongoPolicyStore())
 
-    async def run_lifespan() -> None:
-        async with main.lifespan(main.app):
-            pass
-
-    asyncio.run(run_lifespan())
-
-    assert seeded
-    assert repository.references_validated
+    assert repository.get_policy_documents() == [PDF_POLICY_DOCUMENT]

@@ -262,6 +262,16 @@ def test_classifier_selects_supported_route_types() -> None:
     assert classify_message("What is the capital of France?").route == ChatRoute.OUT_OF_SCOPE
     assert classify_message("Hello there!").route == ChatRoute.GREETING
     assert classify_message("Thank you").route == ChatRoute.CLOSING
+    assert (
+        classify_message(
+            "I want to contact support. My order is damaged. Order number: ORD-1001"
+        )
+        == RouteDecision(ChatRoute.DAMAGE_REPORT, order_id="ORD-1001")
+    )
+    assert (
+        classify_message("The package arrived broken")
+        == RouteDecision(ChatRoute.DAMAGE_REPORT)
+    )
     assert classify_message("Bye bye, have a nice day").route == ChatRoute.CLOSING
     assert (
         classify_message("Thank you, can you track order ORD-1001?").route
@@ -300,6 +310,23 @@ def test_model_intent_understands_greetings_and_typos() -> None:
     )
     assert decision.route == ChatRoute.ORDER
     assert decision.order_id == "ORD-1002"
+
+
+def test_damage_report_request_uses_report_flow_not_policy_retrieval() -> None:
+    agent, tools, policy_calls = make_orchestrator()
+
+    result = agent.handle(
+        "I want to contact support. My order is damaged. Order number: ORD-1001"
+    )
+
+    assert result.route == ChatRoute.DAMAGE_REPORT
+    assert result.actions == [
+        {"type": "open_damage_report", "order_id": "ORD-1001"}
+    ]
+    assert "photo and details" in result.answer
+    assert "does not guarantee a refund or replacement" in result.answer
+    assert policy_calls == []
+    assert all(not tool.calls for tool in tools.values())
 
 
 def test_failed_model_intent_falls_back_to_deterministic_routing() -> None:

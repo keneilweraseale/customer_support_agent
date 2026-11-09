@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -88,6 +89,26 @@ def test_grounded_generation_converts_provider_timeout_to_generation_error() -> 
 
     with pytest.raises(GenerationError, match="request failed"):
         generator.generate("question", [make_evidence("Approved policy text.")])
+
+
+def test_grounded_revision_uses_question_draft_and_approved_evidence() -> None:
+    generator, create = make_generator(
+        "Most items may be returned within 30 days of receipt."
+    )
+
+    answer = generator.revise(
+        "What is the returns policy?",
+        "All items can be returned any time.",
+        [make_evidence("Most items may be returned within 30 days of receipt.")],
+    )
+
+    assert answer == "Most items may be returned within 30 days of receipt."
+    messages = create.call_args.kwargs["messages"]
+    assert "Faithfully paraphrase the evidence" in messages[0]["content"]
+    request = json.loads(messages[1]["content"])
+    assert request["question"] == "What is the returns policy?"
+    assert request["draft_answer"] == "All items can be returned any time."
+    assert request["approved_evidence"][0]["text"].startswith("Most items")
 
 
 @pytest.mark.parametrize(

@@ -1,15 +1,5 @@
 [
   {
-    "shipment_id": "SHIP-1001",
-    "order_id": "ORD-1001",
-    "carrier": "Demo Parcel",
-    "tracking_reference": "TRACK-DEMO-1001",
-    "delivery_status": "label_created",
-    "estimated_delivery": "2026-10-25T18:00:00Z",
-    "last_update": "2026-10-20T12:00:00Z",
-    "delay_reason": null
-  },
-  {
     "shipment_id": "SHIP-1002",
     "order_id": "ORD-1002",
     "carrier": "Demo Parcel",

@@ -262,7 +262,14 @@ class Delivery(RecordModel):
     order_id: Identifier
     carrier: Annotated[str, StringConstraints(min_length=1, max_length=100)]
     tracking_reference: Annotated[str, StringConstraints(min_length=1, max_length=100)]
-    delivery_status: Literal["label_created", "in_transit", "delayed", "delivered"]
+    delivery_status: Literal[
+        "label_created",
+        "in_transit",
+        "out_for_delivery",
+        "delayed",
+        "delivered",
+        "cancelled",
+    ]
     estimated_delivery: datetime | None
     last_update: datetime
     delay_reason: str | None

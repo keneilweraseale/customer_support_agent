@@ -16,7 +16,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def repository(tmp_path: Path) -> JsonRepository:
-    shutil.copyfile(PROJECT_ROOT / "data" / "orders.json", tmp_path / "orders.json")
+    shutil.copyfile(
+        PROJECT_ROOT / "tests" / "fixtures" / "demo_data" / "orders.json",
+        tmp_path / "orders.json",
+    )
     return JsonRepository(tmp_path)
 
 

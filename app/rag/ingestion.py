@@ -1,4 +1,3 @@
-import logging
 import math
 import re
 from pathlib import Path
@@ -20,10 +19,11 @@ from app.storage.json_store import DataStoreError
 from app.storage.models import PolicyChunk, PolicyDocument
 
 
-logger = logging.getLogger(__name__)
 SUPPORTED_SOURCE_SUFFIXES = {".md", ".txt", ".pdf"}
-DEFAULT_MAX_CHARS = 1200
 TOKEN_ENCODING = tiktoken.get_encoding("cl100k_base")
+OBSOLETE_DRAFT_BANNER = re.compile(
+    r"(?im)^.*controlled draft.*verify approval status before use.*(?:\n|$)"
+)
 
 
 class PolicyRepository(Protocol):
@@ -52,40 +52,6 @@ def clean_text(text: str) -> str:
     return "\n".join(cleaned_lines).strip()
 
 
-def deterministic_chunks(text: str, max_chars: int = DEFAULT_MAX_CHARS) -> list[str]:
-    if max_chars < 1:
-        raise ValueError("max_chars must be positive.")
-    if not text:
-        return []
-
-    chunks: list[str] = []
-    start = 0
-    while start < len(text):
-        hard_end = min(start + max_chars, len(text))
-        end = hard_end
-        if hard_end < len(text) and max_chars > 2:
-            preferred_start = start + int(max_chars * 0.6)
-            candidates = [
-                (text.rfind("\n\n", preferred_start, hard_end - 1), 2),
-                (text.rfind(". ", preferred_start, hard_end), 1),
-                (text.rfind(" ", preferred_start, hard_end), 1),
-                (text.rfind("\n", preferred_start, hard_end), 1),
-            ]
-            valid_endings = [
-                (position + length, position)
-                for position, length in candidates
-                if position >= preferred_start and position + length <= hard_end
-            ]
-            if valid_endings:
-                end = max(valid_endings)[0]
-        chunk = text[start:end]
-        if not chunk:
-            raise RuntimeError("Deterministic chunking made no progress.")
-        chunks.append(chunk)
-        start = end
-    return chunks
-
-
 class PolicyIngestor:
     def __init__(
         self,
@@ -93,15 +59,11 @@ class PolicyIngestor:
         data_directory: Path,
         chunker: SemanticChunker,
         embedder: TextEmbedder,
-        max_chars: int = DEFAULT_MAX_CHARS,
     ) -> None:
-        if max_chars < 1:
-            raise ValueError("max_chars must be positive.")
         self._repository = repository
         self._data_directory = data_directory.resolve()
         self._chunker = chunker
         self._embedder = embedder
-        self._max_chars = max_chars
 
     def ingest_approved_documents(self) -> dict[str, int]:
         documents = self._repository.get_policy_documents()
@@ -109,25 +71,18 @@ class PolicyIngestor:
         total_chunks = 0
 
         for document in approved_documents:
-            cleaned_text = clean_text(self._read_source(document))
+            source_text = self._read_source(document)
+            source_text = OBSOLETE_DRAFT_BANNER.sub("", source_text)
+            cleaned_text = clean_text(source_text)
             if not cleaned_text:
                 raise DataStoreError(
                     f"Approved policy document has no text: {document.document_id}"
                 )
 
-            try:
-                chunks = self._chunker.chunk(cleaned_text)
-                self._validate_semantic_chunks(chunks, cleaned_text)
-            except SemanticChunkingError as exc:
-                logger.warning(
-                    "Using deterministic chunks for policy document %s: %s",
-                    document.document_id,
-                    exc,
-                )
-                chunks = deterministic_chunks(cleaned_text, self._max_chars)
+            chunks = self._chunker.chunk(cleaned_text)
+            self._validate_semantic_chunks(chunks, cleaned_text)
 
             chunks = self._merge_whitespace_chunks(chunks, cleaned_text)
-            chunks = self._enforce_max_chars(chunks, cleaned_text)
             embeddings = self._embedder.embed_documents(chunks)
             if len(embeddings) != len(chunks):
                 raise ValueError(
@@ -244,19 +199,6 @@ class PolicyIngestor:
                 "Whitespace chunk merging did not preserve the cleaned source."
             )
         return merged
-
-    def _enforce_max_chars(self, chunks: list[str], source: str) -> list[str]:
-        result: list[str] = []
-        for chunk in chunks:
-            if len(chunk) > self._max_chars:
-                result.extend(deterministic_chunks(chunk, self._max_chars))
-            else:
-                result.append(chunk)
-        if "".join(result) != source:
-            raise SemanticChunkingError(
-                "Chunk size enforcement did not preserve the cleaned source."
-            )
-        return result
 
     def _make_chunk(
         self,

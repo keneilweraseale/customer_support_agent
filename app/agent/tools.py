@@ -53,10 +53,19 @@ def _get_delivery_status(order_id: str, customer_id: str) -> dict[str, object]:
     order = repository.get_order(order_id)
     if order is None or order.customer_id != customer_id:
         return {"found": False, "message": "Order not found."}
+    if order.order_status == "cancelled":
+        return {
+            "found": True,
+            "order_id": order.order_id,
+            "order_status": order.order_status,
+            "deliveries": [],
+            "message": "This order was cancelled and has no active delivery.",
+        }
     deliveries = repository.get_deliveries_for_order(order_id)
     return {
         "found": True,
         "order_id": order_id,
+        "order_status": order.order_status,
         "deliveries": [
             {
                 "shipment_id": delivery.shipment_id,

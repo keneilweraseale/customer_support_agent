@@ -1,3 +1,5 @@
+import base64
+import binascii
 from datetime import datetime, timedelta, timezone
 from typing import Callable, TypeVar
 
@@ -90,6 +92,7 @@ class MongoRepository(SupportRepository):
         max_conversation_turns: int = 12,
         cancellation_history_retention: timedelta = timedelta(days=365),
         server_selection_timeout_ms: int = 5000,
+        search_index_name: str = "policy_bm25_index",
     ) -> None:
         if not uri.strip():
             raise ValueError("MongoDB connection URI must not be empty.")
@@ -97,6 +100,8 @@ class MongoRepository(SupportRepository):
             raise ValueError("MongoDB database name must not be empty.")
         if not vector_index_name.strip():
             raise ValueError("MongoDB vector index name must not be empty.")
+        if not search_index_name.strip():
+            raise ValueError("MongoDB BM25 search index name must not be empty.")
         if conversation_ttl <= timedelta(0):
             raise ValueError("Conversation TTL must be positive.")
         if not 1 <= max_conversation_turns <= 200:
@@ -111,6 +116,7 @@ class MongoRepository(SupportRepository):
         )
         self._database = self._client[database_name]
         self._vector_index_name = vector_index_name
+        self._search_index_name = search_index_name
         self._conversation_ttl = conversation_ttl
         self._max_conversation_turns = max_conversation_turns
         self._cancellation_history_retention = cancellation_history_retention
@@ -132,63 +138,18 @@ class MongoRepository(SupportRepository):
         return self._database[COLLECTIONS[name]]
 
     def _ensure_indexes(self) -> None:
-        indexes = {
-            "conversation_memory": [
-                ([("conversation_id", ASCENDING)], {"unique": True}),
-                ([("expires_at", ASCENDING)], {"expireAfterSeconds": 0}),
-            ],
-            "cancellation_history": [
-                ([("event_id", ASCENDING)], {"unique": True}),
-                ([("request_id", ASCENDING)], {"unique": True}),
-            ],
-            "customer_accounts": [
-                ([("customer_id", ASCENDING)], {"unique": True}),
-                ([("email_normalized", ASCENDING)], {"unique": True, "sparse": True}),
-            ],
-            "support_agents": [
-                ([("staff_id", ASCENDING)], {"unique": True}),
-                ([("email_normalized", ASCENDING)], {"unique": True, "sparse": True}),
-            ],
-            "support_tickets": [
-                ([("ticket_id", ASCENDING)], {"unique": True}),
-                ([("conversation_id", ASCENDING), ("customer_id", ASCENDING),
-                  ("created_at", ASCENDING)], {}),
-            ],
-            "damage_reports": [
-                ([("report_id", ASCENDING)], {"unique": True}),
-                ([("idempotency_key", ASCENDING)], {"unique": True}),
-            ],
-            "orders": [([("order_id", ASCENDING)], {"unique": True})],
-            "deliveries": [
-                ([("shipment_id", ASCENDING)], {"unique": True}),
-                ([("order_id", ASCENDING)], {}),
-            ],
-            "payments": [
-                ([("payment_id", ASCENDING)], {"unique": True}),
-                ([("order_id", ASCENDING)], {}),
-            ],
-            "products": [([("product_id", ASCENDING)], {"unique": True})],
-            "reviews": [
-                ([("review_id", ASCENDING)], {"unique": True}),
-                ([("product_id", ASCENDING)], {}),
-            ],
-            "policy_documents": [
-                ([("document_id", ASCENDING)], {"unique": True})
-            ],
-            "policy_chunks": [
-                ([("chunk_id", ASCENDING)], {"unique": True}),
-                ([("document_id", ASCENDING)], {}),
-            ],
-        }
-        for collection_name, collection_indexes in indexes.items():
-            collection = self._collection(collection_name)
-            for keys, options in collection_indexes:
-                self._run(
-                    f"create indexes on {COLLECTIONS[collection_name]}",
-                    lambda collection=collection, keys=keys, options=options: (
-                        collection.create_index(keys, **options)
-                    ),
+        collection = self._collection("policy_chunks")
+        for keys, options in (
+            ([("chunk_id", ASCENDING)], {"unique": True}),
+            ([("document_id", ASCENDING)], {}),
+        ):
+            self._run(
+                f"create indexes on {COLLECTIONS['policy_chunks']}",
+                lambda keys=keys, options=options: collection.create_index(
+                    keys,
+                    **options,
                 )
+            )
 
     def _document(self, model: BaseModel, id_field: str) -> dict[str, object]:
         raw_document = model.model_dump(mode="python")
@@ -208,7 +169,12 @@ class MongoRepository(SupportRepository):
         record = {
             key: value
             for key, value in document.items()
-            if key not in {"_id", "email_normalized", "image_bytes"}
+            if key not in {
+                "_id",
+                "email_normalized",
+                "image_base64",
+                "image_bytes",
+            }
         }
         try:
             return model.model_validate(record)
@@ -268,12 +234,6 @@ class MongoRepository(SupportRepository):
         )
         if existing is not None:
             existing.pop("_id", None)
-            if existing != document:
-                raise DataStoreError(
-                    f"MongoDB already contains a different "
-                    f"{COLLECTIONS[collection_name]} record for "
-                    f"{identifier_field}={identifier}."
-                )
             return False
         try:
             self._run(
@@ -496,7 +456,7 @@ class MongoRepository(SupportRepository):
             return self._model(existing, DamageReport), False
 
         document = self._document(report, "report_id")
-        document["image_bytes"] = image_bytes
+        document["image_base64"] = base64.b64encode(image_bytes).decode("ascii")
         try:
             self._run("save damage report", lambda: collection.insert_one(document))
         except DataStoreError as exc:
@@ -522,15 +482,110 @@ class MongoRepository(SupportRepository):
             "read damage report image",
             lambda: self._collection("damage_reports").find_one(
                 {"report_id": report_id},
-                projection={"image_bytes": 1},
+                projection={"image_base64": 1, "image_bytes": 1},
             ),
         )
         if document is None:
             return None
+        image_base64 = document.get("image_base64")
+        if isinstance(image_base64, str):
+            try:
+                return base64.b64decode(image_base64, validate=True)
+            except (binascii.Error, ValueError) as exc:
+                raise DataStoreError(
+                    "Damage report image is missing or invalid."
+                ) from exc
         image_bytes = document.get("image_bytes")
         if not isinstance(image_bytes, bytes):
             raise DataStoreError("Damage report image is missing or invalid.")
         return image_bytes
+
+    def ensure_damage_report_image_base64(
+        self,
+        report_id: str,
+        image_base64: str,
+    ) -> bool:
+        collection = self._collection("damage_reports")
+        existing = self._run(
+            "check damage report image",
+            lambda: collection.find_one(
+                {"report_id": report_id},
+                projection={"image_base64": 1, "image_bytes": 1},
+            ),
+        )
+        if existing is None:
+            raise DataStoreError("Damage report could not be found.")
+        if (
+            existing.get("image_base64") is not None
+            or existing.get("image_bytes") is not None
+        ):
+            return False
+        result = self._run(
+            "store damage report image",
+            lambda: collection.update_one(
+                {
+                    "report_id": report_id,
+                    "image_base64": {"$exists": False},
+                    "image_bytes": {"$exists": False},
+                },
+                {"$set": {"image_base64": image_base64}},
+            ),
+        )
+        return result.modified_count > 0
+
+    def migrate_damage_report_images_to_base64(self) -> int:
+        collection = self._collection("damage_reports")
+
+        def migrate_images() -> int:
+            migrated = 0
+            cursor = collection.find(
+                {
+                    "image_bytes": {"$type": "binData"},
+                    "image_base64": {"$exists": False},
+                },
+                projection={"_id": 1, "image_bytes": 1},
+            )
+            for document in cursor:
+                image_bytes = document.get("image_bytes")
+                if not isinstance(image_bytes, bytes):
+                    raise DataStoreError(
+                        "Damage report image is missing or invalid."
+                    )
+                result = collection.update_one(
+                    {
+                        "_id": document["_id"],
+                        "image_base64": {"$exists": False},
+                    },
+                    {
+                        "$set": {
+                            "image_base64": base64.b64encode(
+                                image_bytes
+                            ).decode("ascii")
+                        },
+                        "$unset": {"image_bytes": ""},
+                    },
+                )
+                migrated += result.modified_count
+            return migrated
+
+        return self._run("migrate damage report images to base64", migrate_images)
+
+    def remove_policy_documents(self, document_ids: list[str]) -> tuple[int, int]:
+        if not document_ids:
+            return 0, 0
+        chunks = self._run(
+            "remove obsolete policy chunks",
+            lambda: self._collection("policy_chunks").delete_many(
+                {"document_id": {"$in": document_ids}}
+            ),
+        )
+        documents = self._run(
+            "remove obsolete policy documents",
+            lambda: self._collection("policy_documents").delete_many(
+                {"document_id": {"$in": document_ids}}
+            ),
+        )
+        return documents.deleted_count, chunks.deleted_count
 
     def get_customer_accounts(self) -> list[CustomerAccount]:
         return self._records("customer_accounts", CustomerAccount)
@@ -685,6 +740,78 @@ class MongoRepository(SupportRepository):
             cosine_score = (float(score) * 2.0) - 1.0
             results.append((chunk, cosine_score))
         return results
+
+    def bm25_search_policy_chunks(
+        self,
+        query: str,
+        limit: int = 5,
+        document_versions: dict[str, str] | None = None,
+    ) -> list[PolicyChunk]:
+        if not query.strip():
+            return []
+        if limit < 1:
+            raise ValueError("limit must be positive.")
+
+        filters: list[dict[str, object]] = [
+            {"equals": {"path": "metadata.approved", "value": True}}
+        ]
+        if document_versions is not None:
+            version_filters = [
+                {
+                    "compound": {
+                        "filter": [
+                            {
+                                "equals": {
+                                    "path": "document_id",
+                                    "value": document_id,
+                                }
+                            },
+                            {
+                                "equals": {
+                                    "path": "metadata.updated_at",
+                                    "value": updated_at,
+                                }
+                            },
+                        ]
+                    }
+                }
+                for document_id, updated_at in document_versions.items()
+            ]
+            if not version_filters:
+                return []
+            filters.append(
+                {
+                    "compound": {
+                        "should": version_filters,
+                        "minimumShouldMatch": 1,
+                    }
+                }
+            )
+
+        pipeline = [
+            {
+                "$search": {
+                    "index": self._search_index_name,
+                    "compound": {
+                        "must": [
+                            {
+                                "text": {
+                                    "query": query,
+                                    "path": ["text", "title"],
+                                }
+                            }
+                        ],
+                        "filter": filters,
+                    },
+                }
+            },
+            {"$limit": limit},
+        ]
+        documents = self._run(
+            "search policy chunks with Atlas Search BM25",
+            lambda: list(self._collection("policy_chunks").aggregate(pipeline)),
+        )
+        return [self._model(document, PolicyChunk) for document in documents]
 
     def validate_references(self) -> None:
         orders = self.get_orders()

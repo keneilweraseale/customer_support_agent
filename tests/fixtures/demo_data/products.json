@@ -1,0 +1,20 @@
+[
+  {
+    "product_id": "PROD-001",
+    "name": "Demo insulated bottle",
+    "description": "A fictional reusable bottle for testing customer support tools.",
+    "price": 60.7,
+    "currency": "ZAR",
+    "stock_quantity": 24,
+    "warranty_summary": "Fictional demo warranty: one year."
+  },
+  {
+    "product_id": "PROD-002",
+    "name": "Demo desk lamp",
+    "description": "A fictional adjustable desk lamp for testing customer support tools.",
+    "price": 32.0,
+    "currency": "ZAR",
+    "stock_quantity": 0,
+    "warranty_summary": "Fictional demo warranty: two years."
+  }
+]

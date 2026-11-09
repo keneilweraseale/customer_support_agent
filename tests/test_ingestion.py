@@ -9,22 +9,20 @@ from pypdf.errors import PdfReadError
 from app.rag.ingestion import (
     PolicyIngestor,
     clean_text,
-    deterministic_chunks,
 )
 from app.rag.providers import (
     EmbeddingError,
-    GroqSemanticChunker,
+    EmbeddingSemanticChunker,
     MistralTextEmbedder,
     ProviderConfigurationError,
     SemanticChunkingError,
-    UnavailableSemanticChunker,
     providers_from_environment,
 )
 from app.storage.json_store import DataStoreError, JsonRepository
 from app.storage.models import PolicyChunk
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DATA_DIRECTORY = PROJECT_ROOT / "data"
+DATA_DIRECTORY = PROJECT_ROOT / "tests" / "fixtures" / "demo_data"
 
 
 class FakeSemanticChunker:
@@ -132,21 +130,6 @@ def test_clean_text_normalizes_line_endings_and_whitespace() -> None:
     assert clean_text("  One  \r\n\r\n\r\n Two\twords  ") == "One\n\nTwo words"
 
 
-@pytest.mark.parametrize("max_chars", [1, 8, 30])
-def test_deterministic_chunks_preserve_source_and_maximum_size(max_chars: int) -> None:
-    source = ("Policy sentence. Another sentence.\n\n" * 9).strip()
-
-    chunks = deterministic_chunks(source, max_chars)
-
-    assert "".join(chunks) == source
-    assert all(0 < len(chunk) <= max_chars for chunk in chunks)
-
-
-def test_deterministic_chunks_rejects_invalid_max_size() -> None:
-    with pytest.raises(ValueError, match="positive"):
-        deterministic_chunks("text", 0)
-
-
 def test_ingestion_writes_approved_chunks_with_metadata_and_embeddings(
     policy_data: tuple[JsonRepository, Path],
 ) -> None:
@@ -157,7 +140,6 @@ def test_ingestion_writes_approved_chunks_with_metadata_and_embeddings(
         data_directory,
         FakeSemanticChunker(),
         embedder,
-        max_chars=1000,
     )
 
     result = ingestor.ingest_approved_documents()
@@ -186,7 +168,37 @@ def test_ingestion_writes_approved_chunks_with_metadata_and_embeddings(
     )
 
 
-def test_ingestion_falls_back_when_semantic_chunker_fails(
+def test_ingestion_removes_obsolete_draft_banner_from_approved_policy(
+    policy_data: tuple[JsonRepository, Path],
+) -> None:
+    repository, data_directory = policy_data
+    source_path = data_directory / "policies" / "demo-refund-policy.md"
+    source_path.write_text(
+        "Customer Support AI Agent | Controlled draft - verify approval status "
+        "before use\n\nMost items may be returned within 30 days of receipt.",
+        encoding="utf-8",
+    )
+    ingestor = PolicyIngestor(
+        repository,
+        data_directory,
+        FakeSemanticChunker(lambda text: [text]),
+        FakeEmbedder(),
+    )
+
+    ingestor.ingest_approved_documents()
+
+    refund_chunks = [
+        chunk
+        for chunk in repository.get_policy_chunks()
+        if chunk.document_id == "demo-refund-policy"
+    ]
+    assert len(refund_chunks) == 1
+    assert "controlled draft" not in refund_chunks[0].text.casefold()
+    assert "verify approval status before use" not in refund_chunks[0].text.casefold()
+    assert "returned within 30 days of receipt" in refund_chunks[0].text
+
+
+def test_ingestion_does_not_fall_back_when_semantic_chunker_fails(
     policy_data: tuple[JsonRepository, Path],
 ) -> None:
     repository, data_directory = policy_data
@@ -195,16 +207,14 @@ def test_ingestion_falls_back_when_semantic_chunker_fails(
         data_directory,
         FailingSemanticChunker(),
         FakeEmbedder(),
-        max_chars=64,
     )
 
-    result = ingestor.ingest_approved_documents()
+    with pytest.raises(SemanticChunkingError, match="simulated provider unavailable"):
+        ingestor.ingest_approved_documents()
+    assert repository.get_policy_chunks() == []
 
-    assert result["chunks_written"] > 2
-    assert all(len(chunk.text) <= 64 for chunk in repository.get_policy_chunks())
 
-
-def test_invalid_semantic_output_falls_back_without_losing_text(
+def test_invalid_semantic_output_is_rejected_without_fallback(
     policy_data: tuple[JsonRepository, Path],
 ) -> None:
     repository, data_directory = policy_data
@@ -213,24 +223,11 @@ def test_invalid_semantic_output_falls_back_without_losing_text(
         data_directory,
         FakeSemanticChunker(lambda text: [text[:-1], "invented"]),
         FakeEmbedder(),
-        max_chars=1000,
     )
 
-    ingestor.ingest_approved_documents()
-
-    refund = next(
-        document
-        for document in repository.get_policy_documents()
-        if document.document_id == "demo-refund-policy"
-    )
-    chunks = [
-        chunk.text
-        for chunk in repository.get_policy_chunks()
-        if chunk.document_id == refund.document_id
-    ]
-    assert "".join(chunks) == clean_text(
-        (data_directory / refund.source).read_text(encoding="utf-8")
-    )
+    with pytest.raises(SemanticChunkingError, match="preserve the cleaned source"):
+        ingestor.ingest_approved_documents()
+    assert repository.get_policy_chunks() == []
 
 
 def test_ingestion_merges_whitespace_only_semantic_chunks(
@@ -242,10 +239,13 @@ def test_ingestion_merges_whitespace_only_semantic_chunks(
         repository,
         data_directory,
         FakeSemanticChunker(
-            lambda text: [text[:34], "\n\n", text[36:]]
+            lambda text: [
+                text[: text.index("\n\n")],
+                "\n\n",
+                text[text.index("\n\n") + 2 :],
+            ]
         ),
         embedder,
-        max_chars=1000,
     )
     refund = next(
         document
@@ -275,7 +275,6 @@ def test_reingestion_replaces_chunks_without_duplicates(
         data_directory,
         FakeSemanticChunker(),
         FakeEmbedder(),
-        max_chars=1000,
     )
 
     ingestor.ingest_approved_documents()
@@ -539,51 +538,33 @@ def test_mistral_embedder_rejects_empty_or_non_finite_vectors() -> None:
         assert embeddings_client.last_inputs == ["policy text"]
 
 
-def test_groq_chunker_accepts_only_source_preserving_output() -> None:
-    source = "Keep every character.\n\nKeep punctuation!"
-    response = SimpleNamespace(
-        choices=[
-            SimpleNamespace(
-                message=SimpleNamespace(
-                    content=json.dumps(
-                        {"chunks": ["Keep every character.\n\n", "Keep punctuation!"]}
-                    )
-                )
-            )
-        ]
+def test_embedding_semantic_chunker_groups_related_sentences_and_preserves_source() -> None:
+    source = (
+        "Refunds are available within thirty days. "
+        "Returned items must include all accessories. "
+        "Warranty claims cover product defects. "
+        "Contact support to submit a warranty claim."
     )
-    chunker = GroqSemanticChunker.__new__(GroqSemanticChunker)
-    chunker._model = "test-model"
-    chunker._client = SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(create=Mock(return_value=response))
-        )
-    )
+    vectors = {
+        "Refunds are available within thirty days.": [1.0, 0.0],
+        "Returned items must include all accessories.": [1.0, 0.0],
+        "Warranty claims cover product defects.": [0.0, 1.0],
+        "Contact support to submit a warranty claim.": [0.0, 1.0],
+    }
 
-    assert chunker.chunk(source) == ["Keep every character.\n\n", "Keep punctuation!"]
+    class SentenceEmbedder:
+        def embed_documents(self, texts: list[str]) -> list[list[float]]:
+            return [vectors[text] for text in texts]
 
+    chunks = EmbeddingSemanticChunker(SentenceEmbedder(), max_chars=90).chunk(source)
 
-def test_groq_chunker_rejects_rewritten_content() -> None:
-    response = SimpleNamespace(
-        choices=[
-            SimpleNamespace(
-                message=SimpleNamespace(content='{"chunks":["rewritten text"]}')
-            )
-        ]
-    )
-    chunker = GroqSemanticChunker.__new__(GroqSemanticChunker)
-    chunker._model = "test-model"
-    chunker._client = SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(create=Mock(return_value=response))
-        )
-    )
-
-    with pytest.raises(SemanticChunkingError, match="preserve the source"):
-        chunker.chunk("original text")
+    assert len(chunks) == 2
+    assert "".join(chunks) == source
+    assert "Returned items" in chunks[0]
+    assert "Warranty claims" in chunks[1]
 
 
-def test_missing_groq_key_selects_fallback_and_requires_mistral_key(
+def test_semantic_chunker_uses_mistral_embeddings_and_requires_mistral_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
@@ -591,7 +572,7 @@ def test_missing_groq_key_selects_fallback_and_requires_mistral_key(
     monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
 
     chunker, embedder = providers_from_environment()
-    assert isinstance(chunker, UnavailableSemanticChunker)
+    assert isinstance(chunker, EmbeddingSemanticChunker)
     assert embedder.model_name == "mistral-embed"
 
     monkeypatch.delenv("MISTRAL_API_KEY")

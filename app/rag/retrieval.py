@@ -108,15 +108,42 @@ class HybridPolicyRetriever:
         except EmbeddingError:
             vector_error = "query_embedding_unavailable"
 
-        bm25_scores = self._bm25_scores(approved_chunks, query_tokens)
-        bm25_ranked = [
-            index
-            for index in sorted(
-                range(len(approved_chunks)),
-                key=lambda item: (-bm25_scores[item], item),
+        bm25_ranked: list[int]
+        bm25_search = getattr(self._repository, "bm25_search_policy_chunks", None)
+        if callable(bm25_search):
+            document_versions = {
+                document.document_id: document.updated_at.isoformat()
+                for document in documents.values()
+            }
+            try:
+                bm25_chunks = bm25_search(
+                    query,
+                    self._top_k,
+                    document_versions,
+                )
+            except DataStoreError:
+                logger.exception(
+                    "MongoDB Atlas BM25 search failed; continuing with local BM25."
+                )
+                bm25_ranked = self._local_bm25_ranking(
+                    approved_chunks,
+                    query_tokens,
+                )
+            else:
+                approved_chunk_indices = {
+                    chunk.chunk_id: index
+                    for index, chunk in enumerate(approved_chunks)
+                }
+                bm25_ranked = [
+                    approved_chunk_indices[chunk.chunk_id]
+                    for chunk in bm25_chunks
+                    if chunk.chunk_id in approved_chunk_indices
+                ][: self._top_k]
+        else:
+            bm25_ranked = self._local_bm25_ranking(
+                approved_chunks,
+                query_tokens,
             )
-            if set(query_tokens).intersection(tokenize(approved_chunks[index].text))
-        ][: self._top_k]
 
         vector_scores: dict[int, float] = {}
         valid_vector_scores: dict[int, float] = {}
@@ -223,3 +250,19 @@ class HybridPolicyRetriever:
         if not any(tokenized_corpus):
             return [0.0] * len(chunks)
         return [float(score) for score in BM25Okapi(tokenized_corpus).get_scores(query_tokens)]
+
+    def _local_bm25_ranking(
+        self,
+        chunks: list[PolicyChunk],
+        query_tokens: list[str],
+    ) -> list[int]:
+        query_term_set = set(query_tokens)
+        scores = self._bm25_scores(chunks, query_tokens)
+        return [
+            index
+            for index in sorted(
+                range(len(chunks)),
+                key=lambda item: (-scores[item], item),
+            )
+            if query_term_set.intersection(tokenize(chunks[index].text))
+        ][: self._top_k]

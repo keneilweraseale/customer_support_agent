@@ -1,23 +1,20 @@
-import json
-import logging
 import math
 import os
+import re
+import statistics
 from typing import Protocol
 
 import httpx
-from groq import APIError as GroqAPIError
-from groq import Groq
 from mistralai.client import Mistral
 from mistralai.client.errors import MistralError
 
-logger = logging.getLogger(__name__)
-
 EMBEDDING_MODEL = "mistral-embed"
 PROVIDER_TIMEOUT_MS = 15_000
+DEFAULT_SEMANTIC_CHUNK_MAX_CHARS = 1200
 
 
 class SemanticChunkingError(RuntimeError):
-    """Raised when Groq cannot return valid source-preserving chunk boundaries."""
+    """Raised when semantic chunking cannot produce source-preserving boundaries."""
 
 
 class ProviderConfigurationError(RuntimeError):
@@ -41,57 +38,108 @@ class TextEmbedder(Protocol):
     def embed_query(self, text: str) -> list[float]: ...
 
 
-class GroqSemanticChunker:
-    def __init__(self, api_key: str, model: str) -> None:
-        self._client = Groq(api_key=api_key, timeout=PROVIDER_TIMEOUT_MS / 1000, max_retries=0)
-        self._model = model
+class EmbeddingSemanticChunker:
+    def __init__(
+        self,
+        embedder: TextEmbedder,
+        max_chars: int = DEFAULT_SEMANTIC_CHUNK_MAX_CHARS,
+    ) -> None:
+        if max_chars < 1:
+            raise ValueError("max_chars must be positive.")
+        self._embedder = embedder
+        self._max_chars = max_chars
 
     def chunk(self, text: str) -> list[str]:
-        try:
-            response = self._client.chat.completions.create(
-                model=self._model,
-                temperature=0,
-                response_format={"type": "json_object"},
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Split the provided source text into semantically coherent "
-                            "chunks. Return only JSON with a `chunks` array of strings. "
-                            "Every character, punctuation mark, and whitespace character "
-                            "from the source must appear exactly once, in its original "
-                            "order. Do not rewrite, add, omit, or normalize any text. "
-                            "Concatenating the returned chunks must reproduce the source "
-                            "exactly."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": json.dumps({"source_text": text}, ensure_ascii=False),
-                    },
-                ],
+        if not text:
+            return []
+
+        sentences = self._split_sentences(text)
+        if len(sentences) < 2:
+            return sentences
+
+        embeddings: list[list[float]] = []
+        for start in range(0, len(sentences), 64):
+            embeddings.extend(
+                self._embedder.embed_documents(
+                    [sentence.strip() for sentence in sentences[start : start + 64]]
+                )
             )
-        except GroqAPIError as exc:
-            raise SemanticChunkingError("Groq semantic chunking request failed.") from exc
-
-        if not response.choices or response.choices[0].message.content is None:
-            raise SemanticChunkingError("Groq returned no semantic chunking result.")
-        try:
-            result = json.loads(response.choices[0].message.content)
-        except json.JSONDecodeError as exc:
-            raise SemanticChunkingError("Groq returned invalid JSON for chunking.") from exc
-
-        chunks = result.get("chunks") if isinstance(result, dict) else None
-        if (
-            not isinstance(chunks, list)
-            or not chunks
-            or any(not isinstance(chunk, str) or not chunk for chunk in chunks)
-            or "".join(chunks) != text
-        ):
+        if len(embeddings) != len(sentences):
             raise SemanticChunkingError(
-                "Groq chunk output did not preserve the source text exactly."
+                "Sentence embedding count does not match the source sentences."
+            )
+
+        similarities = [
+            self._cosine_similarity(left, right)
+            for left, right in zip(embeddings, embeddings[1:])
+        ]
+        threshold = statistics.mean(similarities) - statistics.pstdev(similarities)
+        min_chunk_chars = max(1, self._max_chars // 3)
+
+        chunks: list[str] = []
+        start = 0
+        while start < len(sentences):
+            char_count = len(sentences[start])
+            end = len(sentences)
+            for boundary in range(start, len(sentences) - 1):
+                if (
+                    char_count >= min_chunk_chars
+                    and similarities[boundary] < threshold
+                ):
+                    end = boundary + 1
+                    break
+
+                next_char_count = char_count + len(sentences[boundary + 1])
+                if next_char_count > self._max_chars:
+                    end = min(
+                        range(start + 1, boundary + 2),
+                        key=lambda candidate: similarities[candidate - 1],
+                    )
+                    break
+                char_count = next_char_count
+
+            chunks.append("".join(sentences[start:end]))
+            start = end
+
+        if "".join(chunks) != text:
+            raise SemanticChunkingError(
+                "Semantic chunks do not preserve the source text exactly."
             )
         return chunks
+
+    @staticmethod
+    def _split_sentences(text: str) -> list[str]:
+        boundaries: list[int] = []
+        start = 0
+        for match in re.finditer(r"(?<=[.!?])(?=\s)|\n{2,}", text):
+            boundary = match.start()
+            if match.group().startswith("\n"):
+                boundary = match.end()
+            else:
+                while boundary < len(text) and text[boundary].isspace():
+                    boundary += 1
+            if boundary > start and text[start:boundary].strip():
+                boundaries.append(boundary)
+                start = boundary
+
+        spans = [0, *boundaries, len(text)]
+        return [
+            text[left:right]
+            for left, right in zip(spans, spans[1:])
+            if text[left:right].strip()
+        ]
+
+    @staticmethod
+    def _cosine_similarity(left: list[float], right: list[float]) -> float:
+        if len(left) != len(right):
+            raise SemanticChunkingError(
+                "Sentence embeddings have inconsistent dimensions."
+            )
+        left_norm = math.sqrt(sum(value * value for value in left))
+        right_norm = math.sqrt(sum(value * value for value in right))
+        if not left_norm or not right_norm:
+            return 0.0
+        return sum(a * b for a, b in zip(left, right)) / (left_norm * right_norm)
 
 
 class MistralTextEmbedder:
@@ -147,12 +195,6 @@ class UnavailableTextEmbedder:
         raise EmbeddingError("MISTRAL_API_KEY is not configured.")
 
 
-class UnavailableSemanticChunker:
-    def chunk(self, text: str) -> list[str]:
-        del text
-        raise SemanticChunkingError("GROQ_API_KEY is not configured.")
-
-
 def embedder_from_environment(required: bool = True) -> TextEmbedder:
     mistral_key = os.environ.get("MISTRAL_API_KEY", "").strip()
     if mistral_key:
@@ -164,14 +206,5 @@ def embedder_from_environment(required: bool = True) -> TextEmbedder:
 
 
 def providers_from_environment() -> tuple[SemanticChunker, TextEmbedder]:
-    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
-    groq_model = os.environ.get("GROQ_MODEL", "").strip()
-
-    if groq_key and groq_model:
-        chunker: SemanticChunker = GroqSemanticChunker(groq_key, groq_model)
-    else:
-        if groq_key and not groq_model:
-            logger.warning("GROQ_MODEL is not configured; using deterministic chunking.")
-        chunker = UnavailableSemanticChunker()
-
-    return chunker, embedder_from_environment()
+    embedder = embedder_from_environment()
+    return EmbeddingSemanticChunker(embedder), embedder

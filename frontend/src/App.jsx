@@ -66,6 +66,7 @@ function routeStatus(route) {
       clarification: "More information needed",
       conversation_memory: "Earlier conversation recalled",
       support_ticket_message: "Support ticket follow-up",
+      damage_report: "Damage report ready",
     }[route] ?? "Support information retrieved"
   );
 }
@@ -82,6 +83,7 @@ export default function App() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isDamageReportOpen, setIsDamageReportOpen] = useState(false);
+  const [damageReportOrderId, setDamageReportOrderId] = useState("");
   const [isTicketTrackingOpen, setIsTicketTrackingOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -383,6 +385,7 @@ export default function App() {
             isTicketTrackingOpen={isTicketTrackingOpen}
             onDamageReport={() => {
               setIsTicketTrackingOpen(false);
+              setDamageReportOrderId("");
               setIsDamageReportOpen(true);
             }}
             onTickets={() => {
@@ -550,7 +553,11 @@ export default function App() {
               {isDamageReportOpen ? (
                 <DamageReport
                   authorizationToken={authorizationToken}
-                  onBack={() => setIsDamageReportOpen(false)}
+                  initialOrderId={damageReportOrderId}
+                  onBack={() => {
+                    setDamageReportOrderId("");
+                    setIsDamageReportOpen(false);
+                  }}
                 />
               ) : isTicketTrackingOpen ? (
                 <TicketTracking
@@ -567,6 +574,11 @@ export default function App() {
                   <MessageList
                     isLoading={isLoading}
                     messages={messages.filter((message) => !message.pending)}
+                    onDamageReport={(action) => {
+                      setDamageReportOrderId(action.order_id);
+                      setIsTicketTrackingOpen(false);
+                      setIsDamageReportOpen(true);
+                    }}
                     onCancellationDecision={recordCancellationDecision}
                     onConfirmCancellation={confirmCancellation}
                     onQuickAction={handleQuickAction}

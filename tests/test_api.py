@@ -410,7 +410,14 @@ def test_chat_uses_history_to_resolve_other_order_follow_up(monkeypatch) -> None
     calls = []
 
     class FakeOrchestrator:
-        def handle(self, message, customer_id=None, context_order_id=None):
+        def handle(
+            self,
+            message,
+            customer_id=None,
+            context_order_id=None,
+            route_decision=None,
+        ):
+            del route_decision
             calls.append((message, customer_id, context_order_id))
             order_id = "ORD-1001" if len(calls) == 1 else "ORD-1002"
             return OrchestratedChatResult(
@@ -444,9 +451,13 @@ def test_chat_uses_history_to_resolve_other_order_follow_up(monkeypatch) -> None
     assert first.status_code == follow_up.status_code == 200
     assert calls == [
         ("Where is order ORD-1001?", "CUS-DEMO-001", None),
-        ("order status for the other order", "CUS-DEMO-001", "ORD-1001"),
+        ("What about the other one?", "CUS-DEMO-001", "ORD-1001"),
     ]
-    assert follow_up.json()["memory"]["short_term_used"] is True
+    assert follow_up.json()["conversation_id"] == conversation_id
+    assert follow_up.json()["memory"] == {
+        "short_term_used": True,
+        "long_term_record_created": False,
+    }
 
 
 def test_chat_uses_ord_1042_from_memory_for_live_delivery_follow_up(
@@ -601,7 +612,7 @@ def test_chat_recalls_previous_interaction_from_saved_memory(monkeypatch) -> Non
     recall = client.post(
         "/api/chat",
         json={
-            "message": "Do you remember what we talked about earlier?",
+            "message": "Do you remember what we said about the order?",
             "conversation_id": conversation_id,
             "authorization_token": token,
         },
@@ -609,9 +620,10 @@ def test_chat_recalls_previous_interaction_from_saved_memory(monkeypatch) -> Non
 
     assert first.status_code == recall.status_code == 200
     assert calls == 1
-    assert recall.json()["route"] == "conversation_memory"
-    assert "Where is order ORD-1001?" in recall.json()["answer"]
-    assert "Your order ORD-1001 is currently processing." in recall.json()["answer"]
+    assert recall.json()["route"] == "conversation_recall"
+    assert recall.json()["answer"] == (
+        "Earlier, I replied: “Your order ORD-1001 is currently processing.”"
+    )
     assert recall.json()["memory"]["short_term_used"] is True
 
 
@@ -627,8 +639,8 @@ def test_chat_is_honest_when_recall_has_no_saved_history() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["route"] == "conversation_memory"
-    assert "don’t have earlier messages available" in response.json()["answer"]
+    assert response.json()["route"] == "conversation_recall"
+    assert "can’t access an earlier message" in response.json()["answer"]
     assert response.json()["memory"]["short_term_used"] is False
 
 
@@ -659,7 +671,10 @@ def test_support_agent_login_and_ticket_status_lifecycle(
 
     repository = chat_api.support_repository
     shutil.copyfile(
-        Path(__file__).resolve().parents[1] / "data" / "orders.json",
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "demo_data"
+        / "orders.json",
         repository.data_directory / "orders.json",
     )
     service = DemoAuthorizationService(repository)
@@ -818,7 +833,10 @@ def test_admin_ticket_workflow_is_role_protected_and_synchronized(monkeypatch) -
 
     repository = chat_api.support_repository
     shutil.copyfile(
-        Path(__file__).resolve().parents[1] / "data" / "orders.json",
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "demo_data"
+        / "orders.json",
         repository.data_directory / "orders.json",
     )
     service = DemoAuthorizationService(repository)
@@ -1296,6 +1314,39 @@ def test_chat_runs_order_lookup_through_default_tool_orchestrator(monkeypatch) -
     assert response.json()["needs_confirmation"] is False
 
 
+def test_chat_routes_damaged_order_to_photo_report_without_generic_escalation(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(chat_api, "orchestrator", build_default_orchestrator())
+    authorization_token = issue_authorization_token("CUS-DEMO-001")
+    conversation_id = "demo-damage-report-chat"
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": (
+                "I want to contact support team. My order is damaged. "
+                "Order number: ORD-1001"
+            ),
+            "conversation_id": conversation_id,
+            "authorization_token": authorization_token,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["route"] == "damage_report"
+    assert payload["actions"] == [
+        {"type": "open_damage_report", "order_id": "ORD-1001"}
+    ]
+    assert payload["needs_human_support"] is False
+    assert "photo and details" in payload["answer"]
+    assert not any(
+        ticket.conversation_id == conversation_id
+        for ticket in chat_api.support_repository.get_support_tickets()
+    )
+
+
 def test_chat_logs_non_sensitive_execution_summary(caplog) -> None:
     caplog.set_level("INFO", logger="app.api.chat")
     token = issue_authorization_token("CUS-DEMO-001")
@@ -1364,7 +1415,10 @@ def test_chat_uses_owner_scoped_memory_for_delivery_follow_up(monkeypatch, tmp_p
         "short_term_used": True,
         "long_term_record_created": False,
     }
-    assert "SHIP-1001" in follow_up.json()["answer"]
+    assert "ORD-1001 was cancelled and has no active delivery" in (
+        follow_up.json()["answer"]
+    )
+    assert "SHIP-1001" not in follow_up.json()["answer"]
 
     second_token = issue_authorization_token("CUS-DEMO-002")
     other_customer = client.post(
@@ -1789,7 +1843,10 @@ def test_login_cannot_read_another_customers_order(monkeypatch, tmp_path) -> Non
     from app.storage.json_store import JsonRepository
 
     shutil.copyfile(
-        Path(__file__).resolve().parents[1] / "data" / "orders.json",
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "demo_data"
+        / "orders.json",
         tmp_path / "orders.json",
     )
     service = DemoAuthorizationService(JsonRepository(tmp_path))
@@ -1839,7 +1896,10 @@ def test_login_cannot_confirm_another_customers_cancellation(
 
     orders_path = tmp_path / "orders.json"
     shutil.copyfile(
-        Path(__file__).resolve().parents[1] / "data" / "orders.json",
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "demo_data"
+        / "orders.json",
         orders_path,
     )
     orders = json.loads(orders_path.read_text(encoding="utf-8"))
@@ -1919,7 +1979,10 @@ def test_login_issues_customer_scoped_token_and_rejects_bad_credentials(
     from app.storage.json_store import JsonRepository
 
     shutil.copyfile(
-        Path(__file__).resolve().parents[1] / "data" / "orders.json",
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "demo_data"
+        / "orders.json",
         tmp_path / "orders.json",
     )
     service = DemoAuthorizationService(JsonRepository(tmp_path))

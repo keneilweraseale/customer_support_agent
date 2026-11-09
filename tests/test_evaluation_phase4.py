@@ -57,8 +57,9 @@ def test_cross_customer_order_lookup_does_not_disclose_seeded_order() -> None:
 
 
 def test_cancellation_evaluation_is_read_only_and_does_not_claim_success() -> None:
-    order_path = PROJECT_ROOT / "data" / "orders.json"
-    history_path = PROJECT_ROOT / "data" / "cancellation_history.json"
+    fixture_directory = PROJECT_ROOT / "tests" / "fixtures" / "demo_data"
+    order_path = fixture_directory / "orders.json"
+    history_path = fixture_directory / "cancellation_history.json"
     before_orders = order_path.read_bytes()
     before_history = history_path.read_bytes() if history_path.exists() else None
     case = _case(

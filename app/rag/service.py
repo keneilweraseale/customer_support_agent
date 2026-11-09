@@ -66,11 +66,28 @@ class PolicyAnswerService:
                 answer,
                 search_result.results,
             ):
-                answer = (
-                    "I couldn’t verify a reliable answer against the approved "
-                    "policy information, so I’m escalating this to our support team."
+                revise = getattr(self._generator, "revise", None)
+                revised_answer = (
+                    revise(question, answer, search_result.results)
+                    if callable(revise)
+                    else None
                 )
-                needs_human_support = True
+                if (
+                    isinstance(revised_answer, str)
+                    and revised_answer
+                    and self._verifier.is_supported(
+                        question,
+                        revised_answer,
+                        search_result.results,
+                    )
+                ):
+                    answer = revised_answer
+                else:
+                    answer = (
+                        "I couldn’t verify a reliable answer against the approved "
+                        "policy information, so I’m escalating this to our support team."
+                    )
+                    needs_human_support = True
             else:
                 needs_human_support = answer.startswith(HUMAN_SUPPORT_MARKER) or any(
                     phrase in answer.casefold()

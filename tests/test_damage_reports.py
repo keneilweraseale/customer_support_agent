@@ -15,7 +15,12 @@ JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\xff\xd9"
 
 @pytest.fixture
 def report_repository(monkeypatch, tmp_path):
-    source_orders = Path(__file__).resolve().parents[1] / "data" / "orders.json"
+    source_orders = (
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "demo_data"
+        / "orders.json"
+    )
     (tmp_path / "orders.json").write_bytes(source_orders.read_bytes())
     repository = JsonRepository(tmp_path)
     monkeypatch.setattr(damage_reports, "damage_repository", repository)

@@ -8,7 +8,7 @@ from app.rag.retrieval import (
     cosine_similarity,
 )
 from app.rag.service import NO_EVIDENCE_ANSWER, PolicyAnswerService
-from app.storage.json_store import DataStoreError, JsonRepository
+from app.storage.json_store import DataStoreError
 from app.storage.models import PolicyChunk, PolicyDocument
 
 UPDATED_AT = datetime(2026, 10, 22, tzinfo=timezone.utc)
@@ -167,6 +167,66 @@ def test_bm25_continues_when_mongodb_vector_search_fails(caplog) -> None:
     assert result.vector_error == "vector_search_unavailable"
     assert [item.chunk.chunk_id for item in result.results] == ["refund-1"]
     assert "continuing with BM25" in caplog.text
+
+
+def test_hybrid_retrieval_uses_atlas_bm25_and_vector_rankings() -> None:
+    document = make_document()
+    chunks = [
+        make_chunk("vector-only", document, "shipping information", [1.0, 0.0]),
+        make_chunk("shared", document, "refund return information", [0.8, 0.2]),
+        make_chunk("bm25-only", document, "refund policy details", [0.0, 1.0]),
+    ]
+
+    class AtlasHybridRepository(MemoryRepository):
+        def bm25_search_policy_chunks(self, query, limit, document_versions):
+            assert query == "refund"
+            assert limit == 5
+            assert document_versions == {"refund-policy": UPDATED_AT.isoformat()}
+            return [chunks[2], chunks[1]]
+
+        def vector_search_policy_chunks(
+            self,
+            query_vector,
+            embedding_model,
+            limit,
+            document_versions,
+        ):
+            del query_vector, embedding_model, limit, document_versions
+            return [(chunks[0], 0.9), (chunks[1], 0.8)]
+
+    result = HybridPolicyRetriever(
+        AtlasHybridRepository([document], chunks),
+        FakeEmbedder([1.0, 0.0]),
+        min_cosine_similarity=0.1,
+    ).search("refund")
+
+    assert result.bm25_available
+    assert result.vector_available
+    assert result.results[0].chunk.chunk_id == "shared"
+    assert {item.chunk.chunk_id for item in result.results} == {
+        "vector-only",
+        "shared",
+        "bm25-only",
+    }
+
+
+def test_local_bm25_fallback_when_atlas_search_index_is_unavailable(caplog) -> None:
+    document = make_document()
+    chunk = make_chunk("refund-1", document, "refund within thirty days", [1.0, 0.0])
+
+    class UnavailableAtlasSearchRepository(MemoryRepository):
+        def bm25_search_policy_chunks(self, query, limit, document_versions):
+            del query, limit, document_versions
+            raise DataStoreError("Atlas Search index is not ready.")
+
+    result = HybridPolicyRetriever(
+        UnavailableAtlasSearchRepository([document], [chunk]),
+        FakeEmbedder([1.0, 0.0]),
+    ).search("refund")
+
+    assert result.bm25_available
+    assert [item.chunk.chunk_id for item in result.results] == ["refund-1"]
+    assert "continuing with local BM25" in caplog.text
 
 
 def test_bm25_continues_when_chunks_have_no_embeddings() -> None:
@@ -373,22 +433,22 @@ def test_service_uses_transparent_fallback_when_evidence_is_missing() -> None:
     assert generator.calls == []
 
 
-def test_controlled_draft_policy_document_is_not_retrieved() -> None:
-    repository = JsonRepository()
-    document = next(
-        item
-        for item in repository.get_policy_documents()
-        if item.document_id == "customer-support-policies"
+def test_approved_policy_pdf_and_chunks_are_retrieved() -> None:
+    document = make_document("customer-support-policies")
+    chunk = make_chunk(
+        "customer-support-policies-chunk-001",
+        document,
+        "Customer support policies are available for this order.",
+        [1.0, 0.0],
     )
-    assert document.approved is False
+    repository = MemoryRepository([document], [chunk])
 
     result = HybridPolicyRetriever(
         repository,
         FakeEmbedder([1.0, 0.0]),
-    ).search("Can I return an item after 30 days?")
+    ).search("customer support policies")
 
-    assert result.results == []
-    assert result.vector_error == "no_valid_approved_chunks"
+    assert result.results
 
 
 def test_service_handles_generation_failure_without_inventing_answer() -> None:
@@ -431,6 +491,46 @@ def test_service_replaces_unverified_answer_with_safe_escalation() -> None:
 
     assert "couldn’t verify a reliable answer" in result.answer
     assert result.needs_human_support is True
+
+
+def test_service_revises_an_unverified_draft_before_escalating() -> None:
+    document = make_document()
+    chunk = make_chunk("refund-1", document, "refund within thirty days", [])
+
+    class RevisingGenerator(FakeGenerator):
+        def revise(self, question, draft, evidence):
+            assert question == "What is the refund policy?"
+            assert draft == "Refunds are always available."
+            assert [item.chunk.chunk_id for item in evidence] == ["refund-1"]
+            return "Most items may be returned within thirty days."
+
+    class RetryVerifier:
+        def __init__(self) -> None:
+            self.answers: list[str] = []
+
+        def is_supported(self, question, answer, evidence):
+            del question, evidence
+            self.answers.append(answer)
+            return answer == "Most items may be returned within thirty days."
+
+    verifier = RetryVerifier()
+    service = PolicyAnswerService(
+        HybridPolicyRetriever(
+            MemoryRepository([document], [chunk]),
+            FakeEmbedder([1.0, 0.0]),
+        ),
+        RevisingGenerator("Refunds are always available."),
+        verifier,
+    )
+
+    result = service.answer("What is the refund policy?")
+
+    assert result.answer == "Most items may be returned within thirty days."
+    assert result.needs_human_support is False
+    assert verifier.answers == [
+        "Refunds are always available.",
+        "Most items may be returned within thirty days.",
+    ]
 
 
 def test_service_escalates_when_answer_verification_fails() -> None:

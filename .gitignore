@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 node_modules/
 dist/
+allure-results/
 *.py[cod]
 data/customer_accounts.json
 data/support_agents.json

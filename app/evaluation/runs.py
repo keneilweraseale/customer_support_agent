@@ -8,13 +8,11 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from app.evaluation.dataset import EvaluationDatasetStore
 from app.evaluation.runner import run_evaluation_case
 from app.evaluation.schemas import (
     EvaluationCase,
     EvaluationDatasetCaseResult,
     EvaluationDatasetRunRecord,
-    EvaluationMetricResult,
     EvaluationRunResponse,
     EvaluationRunSummary,
 )

@@ -33,7 +33,11 @@ function cameraErrorMessage(error) {
   return "The camera could not be started. Check your camera connection and browser permissions.";
 }
 
-export default function DamageReport({ authorizationToken, onBack }) {
+export default function DamageReport({
+  authorizationToken,
+  initialOrderId = "",
+  onBack,
+}) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const disposedRef = useRef(false);
@@ -43,7 +47,7 @@ export default function DamageReport({ authorizationToken, onBack }) {
   const [capturing, setCapturing] = useState(false);
   const [photo, setPhoto] = useState(null);
   const [photoConfirmed, setPhotoConfirmed] = useState(false);
-  const [orderId, setOrderId] = useState("");
+  const [orderId, setOrderId] = useState(initialOrderId);
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
