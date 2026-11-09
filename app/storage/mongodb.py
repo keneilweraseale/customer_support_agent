@@ -289,6 +289,16 @@ class MongoRepository(SupportRepository):
             raise
         return True
 
+    def migration_collection_is_empty(self, collection_name: str) -> bool:
+        if collection_name not in COLLECTIONS:
+            raise ValueError(f"Unknown MongoDB migration collection: {collection_name}.")
+        return self._run(
+            f"check whether {COLLECTIONS[collection_name]} is empty",
+            lambda: self._collection(collection_name).find_one(
+                {}, projection={"_id": 1}
+            ) is None,
+        )
+
     def get_conversation_memory(
         self,
         conversation_id: str,
@@ -506,6 +516,21 @@ class MongoRepository(SupportRepository):
                 raise DataStoreError("Damage report ID already exists.") from exc
             raise
         return report, True
+
+    def get_damage_report_image(self, report_id: str) -> bytes | None:
+        document = self._run(
+            "read damage report image",
+            lambda: self._collection("damage_reports").find_one(
+                {"report_id": report_id},
+                projection={"image_bytes": 1},
+            ),
+        )
+        if document is None:
+            return None
+        image_bytes = document.get("image_bytes")
+        if not isinstance(image_bytes, bytes):
+            raise DataStoreError("Damage report image is missing or invalid.")
+        return image_bytes
 
     def get_customer_accounts(self) -> list[CustomerAccount]:
         return self._records("customer_accounts", CustomerAccount)

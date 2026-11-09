@@ -8,7 +8,7 @@ from app.rag.retrieval import (
     cosine_similarity,
 )
 from app.rag.service import NO_EVIDENCE_ANSWER, PolicyAnswerService
-from app.storage.json_store import JsonRepository
+from app.storage.json_store import DataStoreError, JsonRepository
 from app.storage.models import PolicyChunk, PolicyDocument
 
 UPDATED_AT = datetime(2026, 10, 22, tzinfo=timezone.utc)
@@ -137,6 +137,36 @@ def test_hybrid_retrieval_uses_vector_and_bm25_and_deduplicates() -> None:
     assert [item.chunk.chunk_id for item in result.results] == ["refund-1"]
     assert result.results[0].vector_score == 1.0
     assert embedder.queries == ["refund return"]
+
+
+def test_bm25_continues_when_mongodb_vector_search_fails(caplog) -> None:
+    document = make_document()
+    chunk = make_chunk("refund-1", document, "refund within thirty days", [1.0, 0.0])
+
+    class UnavailableAtlasVectorRepository(MemoryRepository):
+        def vector_search_policy_chunks(
+            self,
+            query_vector,
+            embedding_model,
+            limit,
+            document_versions,
+        ):
+            del query_vector, embedding_model, limit, document_versions
+            raise DataStoreError("Atlas index is missing a required filter field.")
+
+    retriever = HybridPolicyRetriever(
+        UnavailableAtlasVectorRepository([document], [chunk]),
+        FakeEmbedder([1.0, 0.0]),
+    )
+
+    with caplog.at_level("ERROR", logger="app.rag.retrieval"):
+        result = retriever.search("refund")
+
+    assert result.bm25_available is True
+    assert result.vector_available is False
+    assert result.vector_error == "vector_search_unavailable"
+    assert [item.chunk.chunk_id for item in result.results] == ["refund-1"]
+    assert "continuing with BM25" in caplog.text
 
 
 def test_bm25_continues_when_chunks_have_no_embeddings() -> None:

@@ -63,6 +63,15 @@ class SupportTicketMessage(RecordModel):
     created_at: datetime
 
 
+class SupportTicketAttachment(RecordModel):
+    attachment_id: Identifier
+    filename: Annotated[
+        str,
+        StringConstraints(pattern=r"^[a-f0-9-]{36}\.(jpg|png)$"),
+    ]
+    content_type: Literal["image/jpeg", "image/png"]
+
+
 class SupportTicketInternalNote(RecordModel):
     staff_id: Identifier
     text: Annotated[str, StringConstraints(min_length=1, max_length=2000)]
@@ -170,6 +179,7 @@ class SupportTicket(RecordModel):
     priority: Literal["low", "medium", "high", "critical"] = "medium"
     assigned_to: Identifier | None = None
     messages: list[SupportTicketMessage] = Field(default_factory=list, max_length=200)
+    attachments: list[SupportTicketAttachment] = Field(default_factory=list, max_length=10)
     internal_notes: list[SupportTicketInternalNote] = Field(default_factory=list, max_length=200)
     audit_history: list[SupportTicketAuditEvent] = Field(default_factory=list, max_length=500)
 

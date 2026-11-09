@@ -12,12 +12,18 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
 from app.services.demo_authorization import demo_authorization_service
+from app.services.conversation_memory import sanitize_sensitive_text
 from app.storage.factory import repository_from_environment
 from app.storage.json_store import (
     DamageReportConflictError,
     DataStoreError,
 )
-from app.storage.models import DamageReport
+from app.storage.models import (
+    DamageReport,
+    SupportTicket,
+    SupportTicketAttachment,
+    SupportTicketMessage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +61,15 @@ class DamageReportRequest(BaseModel):
         str,
         StringConstraints(min_length=32, max_length=MAX_IMAGE_DATA_LENGTH),
     ]
-    description: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] | None = None
+    description: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=1000),
+    ]
 
 
 class DamageReportResponse(BaseModel):
     report_id: str
+    ticket_id: str
     order_id: str
     created: bool
     message: str
@@ -155,7 +165,7 @@ async def submit_damage_report(
         ).hexdigest(),
         customer_id=customer_id,
         order_id=payload.order_id,
-        description=payload.description or None,
+        description=sanitize_sensitive_text(payload.description),
         image_filename=f"{report_id}.{extension}",
         created_at=datetime.now(timezone.utc),
     )
@@ -187,11 +197,80 @@ async def submit_damage_report(
             detail="Your damage report could not be saved. Please try again.",
         ) from exc
 
+    ticket_id = f"DAMAGE-{saved_report.report_id}"
+    ticket = SupportTicket(
+        ticket_id=ticket_id,
+        conversation_id=f"damage-report:{saved_report.report_id}",
+        customer_message=saved_report.description or "",
+        customer_id=customer_id,
+        order_id=saved_report.order_id,
+        issue_summary=f"Damaged item reported for {saved_report.order_id}",
+        category="Product damage",
+        priority="high",
+        created_at=saved_report.created_at,
+        messages=[
+            SupportTicketMessage(
+                author_role="customer",
+                author_id=customer_id,
+                text=saved_report.description or "",
+                created_at=saved_report.created_at,
+            )
+        ],
+        attachments=[
+            SupportTicketAttachment(
+                attachment_id=saved_report.report_id,
+                filename=saved_report.image_filename,
+                content_type=mime_type,
+            )
+        ],
+    )
+    ticket_created = True
+    try:
+        await run_in_threadpool(damage_repository.append_support_ticket, ticket)
+    except DataStoreError as exc:
+        try:
+            existing_ticket = await run_in_threadpool(
+                damage_repository.get_support_ticket,
+                ticket_id,
+            )
+        except DataStoreError as lookup_exc:
+            logger.error(
+                "Damage report ticket could not be verified",
+                extra={
+                    "action": "submit_damage_report",
+                    "report_id": saved_report.report_id,
+                    "outcome": "storage_error",
+                    "request_id": request.state.request_id,
+                    "actor_id": customer_id,
+                },
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Your support ticket could not be opened. Please retry your submission.",
+            ) from lookup_exc
+        if existing_ticket != ticket:
+            logger.error(
+                "Damage report ticket could not be created",
+                extra={
+                    "action": "submit_damage_report",
+                    "report_id": saved_report.report_id,
+                    "outcome": "storage_error",
+                    "request_id": request.state.request_id,
+                    "actor_id": customer_id,
+                },
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Your support ticket could not be opened. Please retry your submission.",
+            ) from exc
+        ticket_created = False
+
     logger.info(
         "Damage report submission completed",
         extra={
             "action": "submit_damage_report",
             "report_id": saved_report.report_id,
+            "ticket_id": ticket_id,
             "order_id": saved_report.order_id,
             "outcome": "created" if created else "duplicate",
             "request_id": request.state.request_id,
@@ -200,12 +279,13 @@ async def submit_damage_report(
     )
     return DamageReportResponse(
         report_id=saved_report.report_id,
+        ticket_id=ticket_id,
         order_id=saved_report.order_id,
         created=created,
         message=(
-            "Your damage report was submitted for review."
-            if created
-            else "This damage report was already received."
+            f"Your damage report was submitted. Support ticket {ticket_id} is open."
+            if ticket_created
+            else f"This damage report was already received as ticket {ticket_id}."
         ),
         created_at=saved_report.created_at,
     )

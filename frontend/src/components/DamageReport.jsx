@@ -206,7 +206,8 @@ export default function DamageReport({ authorizationToken, onBack }) {
           <div aria-hidden="true" style={styles.successIcon}>✓</div>
           <h3 style={styles.successTitle}>Report received</h3>
           <p style={styles.body}>
-            {report.message} Your report reference is <strong>{report.report_id}</strong>.
+            {report.message} The support team can review your attached photo and message.
+            Your report reference is <strong>{report.report_id}</strong>.
             Submitting a report does not mean a refund or replacement has been approved.
           </p>
           <button onClick={onBack} style={styles.primaryButton} type="button">Back to chat</button>
@@ -279,7 +280,7 @@ export default function DamageReport({ authorizationToken, onBack }) {
               value={orderId}
             />
             <label htmlFor="damage-description" style={styles.label}>
-              Describe the damage <span style={styles.optional}>(optional)</span>
+              Message for support (required)
             </label>
             <textarea
               id="damage-description"
@@ -289,6 +290,7 @@ export default function DamageReport({ authorizationToken, onBack }) {
                 setDescription(event.target.value);
               }}
               placeholder="Tell us what happened or where the item is damaged."
+              required
               rows={3}
               style={styles.input}
               value={description}
@@ -302,7 +304,9 @@ export default function DamageReport({ authorizationToken, onBack }) {
               Your photo and details are securely sent to support for review.
             </p>
             <button
-              disabled={!photoConfirmed || !orderId.trim() || submitting}
+              disabled={
+                !photoConfirmed || !orderId.trim() || !description.trim() || submitting
+              }
               style={styles.primaryButton}
               type="submit"
             >

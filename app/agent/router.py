@@ -7,6 +7,10 @@ from typing import Callable, Protocol
 from langchain_core.tools.base import ToolException
 
 from app.agent.intent_classifier import IntentClassificationError
+from app.agent.tool_calling import (
+    GroqToolCallingAgent,
+    ToolCallingError,
+)
 from app.rag.providers import ProviderConfigurationError
 from app.rag.service import PolicyAnswer
 from app.storage.json_store import DataStoreError
@@ -133,6 +137,12 @@ class RouteDecision:
     product_id: str | None = None
     additional_routes: tuple[ChatRoute, ...] = ()
 
+    @property
+    def subtasks(self) -> tuple[ChatRoute, ...]:
+        if self.route == ChatRoute.MULTI:
+            return self.additional_routes
+        return (self.route, *self.additional_routes)
+
 
 @dataclass(frozen=True)
 class OrchestratedChatResult:
@@ -159,6 +169,7 @@ class ChatOrchestrator:
         cancellation_tool: InvokableTool,
         policy_answer: Callable[[str], PolicyAnswer],
         customer_orders_tool: InvokableTool | None = None,
+        tool_calling_agent: GroqToolCallingAgent | None = None,
     ) -> None:
         self._order_tool = order_tool
         self._delivery_tool = delivery_tool
@@ -168,6 +179,7 @@ class ChatOrchestrator:
         self._cancellation_tool = cancellation_tool
         self._policy_answer = policy_answer
         self._customer_orders_tool = customer_orders_tool
+        self._tool_calling_agent = tool_calling_agent
 
     def handle(
         self,
@@ -179,14 +191,6 @@ class ChatOrchestrator:
     ) -> OrchestratedChatResult:
         actual_tool_calls: list[dict[str, object]] = []
         decision = route_decision or classify_message(message)
-        if decision.additional_routes:
-            return self._answer_multiple(
-                message,
-                decision,
-                customer_id,
-                context_order_id,
-                actual_tool_calls,
-            )
         if (
             decision.route
             in {
@@ -205,7 +209,51 @@ class ChatOrchestrator:
                 decision.route,
                 order_id=context_order_id,
                 product_id=decision.product_id,
-                subtasks=decision.subtasks,
+                additional_routes=decision.additional_routes,
+            )
+        if self._should_use_tool_calling_agent(decision):
+            try:
+                agent_result = self._tool_calling_agent.run(
+                    message,
+                    customer_id,
+                    (
+                        None
+                        if requests_order_search(message)
+                        else context_order_id
+                    ),
+                )
+            except ToolCallingError:
+                logger.exception(
+                    "Groq tool-calling agent failed; using deterministic routing."
+                )
+            else:
+                return OrchestratedChatResult(
+                    answer=agent_result.answer,
+                    route=(
+                        ChatRoute.MULTI
+                        if decision.route == ChatRoute.MULTI
+                        or decision.additional_routes
+                        else decision.route
+                    ),
+                    sources=[],
+                    actions=[],
+                    needs_human_support=agent_result.needs_human_support,
+                    actual_tool_calls=[
+                        self._tool_trace(
+                            execution.name,
+                            execution.arguments,
+                            execution.result,
+                        )
+                        for execution in agent_result.executions
+                    ],
+                )
+        if decision.additional_routes:
+            return self._answer_multiple(
+                message,
+                decision,
+                customer_id,
+                context_order_id,
+                actual_tool_calls,
             )
         if decision.route == ChatRoute.CLARIFICATION:
             return OrchestratedChatResult(
@@ -1142,6 +1190,23 @@ class ChatOrchestrator:
         actual_tool_calls.append(self._tool_trace(tool_name, tool_input, result))
         return result
 
+    def _should_use_tool_calling_agent(self, decision: RouteDecision) -> bool:
+        if self._tool_calling_agent is None:
+            return False
+        eligible_routes = {
+            ChatRoute.ORDER,
+            ChatRoute.DELIVERY,
+            ChatRoute.PAYMENT,
+            ChatRoute.PRODUCT,
+            ChatRoute.REVIEWS,
+            ChatRoute.MULTI,
+        }
+        routes = (decision.route, *decision.additional_routes, *decision.subtasks)
+        return (
+            decision.route in eligible_routes
+            and all(route != ChatRoute.POLICY for route in routes)
+        )
+
     def _tool_trace(
         self,
         tool_name: str,
@@ -1639,8 +1704,17 @@ def build_default_orchestrator() -> ChatOrchestrator:
         get_payment_status_tool,
         search_customer_reviews_tool,
     )
+    from app.agent.tool_calling import tool_calling_agent_from_environment
     from app.rag.service import answer_policy_question
 
+    read_only_tools = [
+        get_order_status_tool,
+        find_customer_orders_tool,
+        get_delivery_status_tool,
+        get_payment_status_tool,
+        check_product_availability_tool,
+        search_customer_reviews_tool,
+    ]
     return ChatOrchestrator(
         order_tool=get_order_status_tool,
         delivery_tool=get_delivery_status_tool,
@@ -1650,4 +1724,5 @@ def build_default_orchestrator() -> ChatOrchestrator:
         cancellation_tool=check_cancellation_eligibility_tool,
         policy_answer=answer_policy_question,
         customer_orders_tool=find_customer_orders_tool,
+        tool_calling_agent=tool_calling_agent_from_environment(read_only_tools),
     )

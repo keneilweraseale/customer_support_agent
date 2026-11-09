@@ -26,15 +26,16 @@ This repository implements the customer-support agent described in
   `1 / (60 + rank)` for each vector/BM25 result list. If query vectors cannot
   be created or stored vectors are missing/incompatible, BM25 can still retrieve
   evidence.
-- **Phase 6:** Deterministic chat routing selects approved-policy RAG, order,
-  delivery, payment, product, review, and cancellation-eligibility tools.
-  Mixed warranty/product questions combine policy sources with current product
-  data. Order-related requests require a signed-in customer session and order
-  reference; cancellation checks eligibility before asking for confirmation.
-  Delivery, policy, and support-contact tasks can be answered together. The
-  local `Policies.pdf` currently conflicts with its registry approval flag, so
-  it is marked unapproved and is excluded from retrieval until an authorized
-  reviewer resolves that conflict.
+- **Phase 6:** A bounded Groq tool-calling agent selects among LangChain
+  `StructuredTool` read-only lookups for order, delivery, payment, product, and
+  review requests. Customer identity is supplied by the server, not chosen by
+  the model. Cancellation and other state-changing actions stay on the
+  confirmation-gated workflow. Policy questions continue through the separate
+  approved-evidence RAG pipeline; mixed warranty/product questions combine
+  verified policy sources with current product data. The local `Policies.pdf`
+  currently conflicts with its registry approval flag, so it is marked
+  unapproved and excluded from retrieval until an authorized reviewer resolves
+  that conflict.
 - **Phase 7:** Authenticated conversations retain at most 12 recent turns and
   the last order reference, scoped to the verified customer. Memory expires
   after 30 minutes of inactivity by default, redacts common secret/payment
@@ -155,23 +156,34 @@ MONGODB_VECTOR_INDEX=policy_vector_index
 
 In Atlas, add your development IP address to the project's network access list
 and create a database user with read/write access to this database. Keep the
-URI private and never commit it. The default `STORAGE_BACKEND=json` preserves
-the current behavior; selecting `mongodb` does not silently fall back to JSON
-if Atlas is unavailable.
+URI private and never commit it. MongoDB is the default storage backend for
+application runs; selecting `json` explicitly uses local JSON files instead.
+MongoDB failures do not silently fall back to JSON.
 
-Install dependencies, then import the current JSON data once:
+On application startup, records from the local JSON datasets are imported into
+their MongoDB collections only when each corresponding collection is empty.
+This seeds the application data and policies without overwriting existing
+database records. New and updated application data is then stored in MongoDB;
+policy documents and policy chunks are stored separately in
+`policydocuments` and `policychunks`. Login sessions remain in process memory
+and evaluation datasets and reports remain local JSON files. You do not need
+to run the migration script to initialize the database when starting the
+application.
+
+Install dependencies before starting the application:
 
 ```powershell
 python -m pip install -r requirements.txt
-python -m app.storage.migrate_json_to_mongodb
 ```
 
-The migration inserts records without overwriting existing ones. It is safe to
-rerun when every matching record is unchanged; conflicting existing records
-stop the migration and are not overwritten. It also imports damage-report
-images. The application stores customer accounts in `customers` and additionally
-creates `policychunks`, `cancellationhistory`, and `damagereports` as needed.
-Evaluation cases and evaluation-run reports remain local JSON files.
+The optional migration command can still be used to import all datasets into an
+existing MongoDB database. It inserts records without overwriting existing
+ones, is safe to rerun when every matching record is unchanged, and stops on
+conflicting records. It also imports damage-report images. The application
+stores customer accounts in `customers` and additionally uses collections for
+conversations, cancellation history, support agents and tickets, damage reports,
+orders, deliveries, payments, products, reviews, and policies. Evaluation cases
+and evaluation-run reports remain local JSON files.
 
 Before enabling policy-vector retrieval, create an Atlas Vector Search index
 named `policy_vector_index` on the `policychunks` collection. In Atlas Data
@@ -187,6 +199,7 @@ this definition:
       "numDimensions": 1024,
       "similarity": "cosine"
     },
+    {"type": "filter", "path": "document_id"},
     {"type": "filter", "path": "embedding_model"},
     {"type": "filter", "path": "metadata.approved"},
     {"type": "filter", "path": "metadata.updated_at"}
@@ -207,7 +220,12 @@ deterministic chunker. Start the API with `uvicorn app.main:app --reload` and
 ask a policy question through the chat UI. Atlas Vector Search supplies the
 vector-ranked candidates; the existing BM25 retrieval and reciprocal-rank
 fusion remain in use. The search index must be ready before policy chat can use
-MongoDB vector retrieval. Policy sources can be stored under `data/` or in
+MongoDB vector retrieval. The index must enable `document_id` as a filter field,
+because current-document filtering is applied during vector search. If an
+existing index was created from an older definition, edit/recreate it and wait
+for it to become **Ready** before retrying. If Atlas vector search is unavailable,
+the app logs the failure and continues with Mongo-backed BM25 rather than
+returning a server error. Policy sources can be stored under `data/` or in
 `app/policies/`; set each document's `source` field to the corresponding
 repository-relative path. Only their metadata, chunks, and embeddings are
 stored in MongoDB.
@@ -575,9 +593,22 @@ allure serve allure-results
 This opens the generated report in your browser. Run the tests again whenever
 you want to refresh the results.
 
-### Use the Phase 2 tools in Python
+### Tool-calling agent and Phase 2 tools
 
-The tools are LangChain `StructuredTool` objects; for example:
+The chat agent uses Groq function calling to select from the existing LangChain
+`StructuredTool` objects. It executes read-only tools for a bounded number of
+steps and returns the model's response from those tool results. The actual
+cancellation tool is never exposed to the model; cancellation still requires
+the existing explicit confirmation flow. Policy questions are routed through
+RAG, not answered by the tool-calling model.
+
+The tool-calling agent is enabled by default when Groq credentials and a model
+are configured. Set `GROQ_TOOL_AGENT_ENABLED=false` to keep deterministic tool
+routing. `GROQ_AGENT_MODEL` optionally overrides `GROQ_MODEL` for tool
+selection and response synthesis.
+
+The tools remain directly invokable LangChain `StructuredTool` objects; for
+example:
 
 ```python
 from app.agent.tools import get_order_status_tool
@@ -646,6 +677,9 @@ the retrieved approved evidence using `GROQ_VERIFIER_MODEL` (defaults to
 a safe escalation response rather than shown as fact. This adds a second model
 request per policy answer, but model-based verification cannot guarantee that
 all hallucinations are detected. Model requests have a 15-second timeout.
+The bounded tool-calling agent uses `GROQ_MODEL` by default, or
+`GROQ_AGENT_MODEL` when set; set `GROQ_TOOL_AGENT_ENABLED=false` to keep
+deterministic tool routing.
 Never commit `.env` or place credentials in source code.
 
 Chat requests are screened locally for attempts to retrieve credentials,
@@ -682,7 +716,8 @@ repeated runs.
 Signed-in customers can use **Report damaged item** in the chat header or
 **Report Damaged Item** in the first quick-action list to open Live Picture.
 The customer must open the device camera, capture a new photo, review or retake
-it, and confirm the photo before entering an order reference and submitting.
+it, and confirm the photo before entering an order reference and a required
+message for support.
 There is no image picker, file upload control, gallery fallback, or paste
 workflow. The browser camera is accessed with `getUserMedia()` and stopped when
 closed, after capture, or when the component unmounts. Camera access generally
@@ -707,30 +742,37 @@ Request fields:
 }
 ```
 
-`description` is optional (up to 1,000 characters). `image_data` must contain a
-JPEG or PNG camera capture no larger than 5 MiB. Example successful response:
+`description` is required (1–1,000 characters). `image_data` must contain a
+JPEG or PNG camera capture no larger than 5 MiB. Each successful submission
+opens a high-priority support ticket containing the message and a private
+image attachment. Example successful response:
 
 ```json
 {
   "report_id": "c1f3a5b7-1234-4567-89ab-cdef01234567",
+  "ticket_id": "DAMAGE-c1f3a5b7-1234-4567-89ab-cdef01234567",
   "order_id": "ORD-1001",
   "created": true,
-  "message": "Your damage report was submitted for review.",
+  "message": "Your damage report was submitted. Support ticket DAMAGE-c1f3a5b7-1234-4567-89ab-cdef01234567 is open.",
   "created_at": "2026-10-29T08:30:00Z"
 }
 ```
 
-An identical retry returns the original report identifier with `"created":
-false`. Reusing the idempotency key for different report contents returns
-`409`; expired/invalid sessions return `401`; an unknown or another customer's
-order returns `404`; invalid image data returns `422` or `415`; oversized
+An identical retry returns the original report and ticket identifiers with
+`"created": false`. Reusing the idempotency key for different report contents
+returns `409`; expired/invalid sessions return `401`; an unknown or another
+customer's order returns `404`; invalid image data returns `422` or `415`; oversized
 images return `413`; and persistence failures return `503`. With JSON storage,
 reports and private image bytes are persisted separately in
 `data/damage_reports.json` and `data/damage_report_images/`; MongoDB stores them
-in the `damagereports` collection. There is no public image-serving endpoint.
-This demonstration storage is not a substitute for production
+in the `damagereports` collection. The support dashboard shows the message and
+provides authenticated access to the attached image; images are not publicly
+served. Ticket metadata is stored with the existing support tickets. If ticket
+creation fails after the report is saved, the API returns
+`503` and an identical retry completes ticket creation without duplicating the
+report. This demonstration storage is not a substitute for production
 encrypted/private object storage, retention policies, or backups. Submission
-records the report only; it does not approve a claim, refund, or replacement.
+does not approve a claim, refund, or replacement.
 
 Run backend tests from the project root:
 
@@ -746,8 +788,10 @@ npm run build
 
 For manual camera verification, start the FastAPI app and Vite frontend, sign
 in with a configured demo account, open Live Picture on a device with a camera,
-grant the browser permission, take a photo, and verify that retake, confirmation,
-submission, and the report reference work. Also test denied permission and a
+grant the browser permission, take a photo, add the required message and order
+reference, and verify that retake, confirmation, submission, and the ticket
+reference work. In the support dashboard, open the new ticket and verify the
+message and attached photo are visible. Also test denied permission and a
 device without camera hardware; both should show a helpful message without
 offering image selection. For a physical device, serve the frontend and API
 over HTTPS and configure them to share the same origin or suitable proxy.

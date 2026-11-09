@@ -6,6 +6,7 @@ from app.agent.router import (
     classify_message_with_intent,
 )
 from app.agent.intent_classifier import IntentClassificationError
+from app.agent.tool_calling import ToolCallingResult
 from app.rag.providers import ProviderConfigurationError
 from app.rag.service import PolicyAnswer
 from app.rag.retrieval import HybridSearchResult
@@ -136,6 +137,91 @@ def make_orchestrator(policy_answer=None, product_result=None) -> tuple[ChatOrch
         customer_orders_tool=tools["customer_orders"],
     )
     return orchestrator, tools, policy_calls
+
+
+def test_tool_calling_agent_handles_read_queries_but_not_policy_or_cancellation() -> None:
+    class FakeAgent:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str | None, str | None]] = []
+
+        def run(
+            self,
+            question: str,
+            customer_id: str | None,
+            context_order_id: str | None = None,
+        ) -> ToolCallingResult:
+            self.calls.append((question, customer_id, context_order_id))
+            return ToolCallingResult(
+                answer="The product is in stock.",
+                executions=[],
+                needs_human_support=False,
+            )
+
+    tools = {
+        name: FakeTool()
+        for name in (
+            "order",
+            "delivery",
+            "payment",
+            "product",
+            "review",
+            "cancellation",
+            "customer_orders",
+        )
+    }
+    tools["cancellation"] = FakeTool(
+        {"found": True, "eligible": True, "confirmation_token": "demo-token"}
+    )
+    policy_calls: list[str] = []
+    agent = FakeAgent()
+    orchestrator = ChatOrchestrator(
+        order_tool=tools["order"],
+        delivery_tool=tools["delivery"],
+        payment_tool=tools["payment"],
+        product_tool=tools["product"],
+        review_tool=tools["review"],
+        cancellation_tool=tools["cancellation"],
+        policy_answer=lambda question: (
+            policy_calls.append(question) or make_policy_answer()
+        ),
+        customer_orders_tool=tools["customer_orders"],
+        tool_calling_agent=agent,
+    )
+
+    product_result = orchestrator.handle(
+        "Is PROD-001 in stock?",
+        "CUS-DEMO-001",
+        route_decision=RouteDecision(ChatRoute.PRODUCT, product_id="PROD-001"),
+    )
+    other_order_result = orchestrator.handle(
+        "Find my other order.",
+        "CUS-DEMO-001",
+        "ORD-1001",
+        route_decision=RouteDecision(ChatRoute.ORDER),
+    )
+    policy_result = orchestrator.handle(
+        "What is the refund policy?",
+        route_decision=RouteDecision(ChatRoute.POLICY),
+    )
+    cancellation_result = orchestrator.handle(
+        "Cancel ORD-1001",
+        "CUS-DEMO-001",
+        route_decision=RouteDecision(
+            ChatRoute.CANCELLATION,
+            order_id="ORD-1001",
+        ),
+    )
+
+    assert product_result.answer == "The product is in stock."
+    assert other_order_result.answer == "The product is in stock."
+    assert agent.calls == [
+        ("Is PROD-001 in stock?", "CUS-DEMO-001", None),
+        ("Find my other order.", "CUS-DEMO-001", None),
+    ]
+    assert policy_result.route == ChatRoute.POLICY
+    assert policy_calls == ["What is the refund policy?"]
+    assert cancellation_result.needs_confirmation is True
+    assert len(tools["cancellation"].calls) == 1
 
 
 def test_classifier_selects_supported_route_types() -> None:

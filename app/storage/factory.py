@@ -38,7 +38,7 @@ def repository_from_environment(
         dotenv_path=Path(__file__).resolve().parents[2] / ".env",
         override=False,
     )
-    backend = os.environ.get("STORAGE_BACKEND", "json").strip().casefold()
+    backend = os.environ.get("STORAGE_BACKEND", "mongodb").strip().casefold()
     uri = os.environ.get("MONGODB_URI", "").strip()
     database_name = os.environ.get("MONGODB_DATABASE", "").strip()
     vector_index_name = os.environ.get(

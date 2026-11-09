@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Annotated, Callable, Literal
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
@@ -16,6 +16,7 @@ from app.storage.json_store import DataStoreError, SupportTicketConflictError
 from app.storage.models import (
     SupportAgentAccount,
     SupportTicket,
+    SupportTicketAttachment,
     SupportTicketAuditEvent,
     SupportTicketInternalNote,
     SupportTicketMessage,
@@ -51,6 +52,7 @@ class AdminTicketDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     messages: list[SupportTicketMessage]
+    attachments: list[SupportTicketAttachment]
     internal_notes: list[SupportTicketInternalNote]
     status_history: list[SupportTicketStatusChange]
     audit_history: list[SupportTicketAuditEvent]
@@ -172,6 +174,7 @@ async def _admin_detail(ticket: SupportTicket) -> AdminTicketDetail:
         created_at=ticket.created_at,
         updated_at=_updated_at(ticket),
         messages=ticket.messages,
+        attachments=ticket.attachments,
         internal_notes=ticket.internal_notes,
         status_history=ticket.status_history,
         audit_history=ticket.audit_history,
@@ -311,6 +314,52 @@ async def get_admin_ticket(
             detail="Support tickets are temporarily unavailable.",
         ) from exc
     raise HTTPException(status_code=404, detail="Support ticket could not be found.")
+
+
+@router.get("/tickets/{ticket_id}/attachments/{attachment_id}")
+async def get_admin_ticket_attachment(
+    ticket_id: str,
+    attachment_id: str,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+) -> Response:
+    _require_support_agent(authorization)
+    try:
+        ticket = await run_in_threadpool(
+            support_repository.get_support_ticket,
+            ticket_id,
+        )
+        if ticket is None:
+            raise HTTPException(status_code=404, detail="Support ticket could not be found.")
+        attachment = next(
+            (
+                item
+                for item in ticket.attachments
+                if item.attachment_id == attachment_id
+            ),
+            None,
+        )
+        if attachment is None:
+            raise HTTPException(status_code=404, detail="Ticket attachment could not be found.")
+        image_bytes = await run_in_threadpool(
+            support_repository.get_damage_report_image,
+            attachment_id,
+        )
+    except DataStoreError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Ticket attachments are temporarily unavailable.",
+        ) from exc
+    if image_bytes is None:
+        raise HTTPException(status_code=404, detail="Ticket attachment could not be found.")
+    return Response(
+        content=image_bytes,
+        media_type=attachment.content_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": f'inline; filename="{attachment.filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.patch("/tickets/{ticket_id}/status", response_model=TicketMutationResponse)

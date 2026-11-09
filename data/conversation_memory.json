@@ -1,57 +1,87 @@
 [
   {
-    "conversation_id": "a5c420e5-6793-4d37-a6a1-14dc86db8c73",
-    "owner_id": "CUS-DEMO-002",
+    "conversation_id": "3a3bcd44-dfee-47d2-8133-d860a83d121c",
+    "owner_id": "CUS-DEMO-001",
     "turns": [
       {
         "role": "user",
-        "text": "can you please contact customer support i have a complaint",
-        "created_at": "2026-11-02T08:09:59.929336Z"
+        "text": "I need to track an order",
+        "created_at": "2026-11-09T04:38:15.683337Z"
       },
       {
         "role": "assistant",
-        "text": "I couldn’t find enough information in the approved policy documents to verify that. Please contact support for help.\n\nI’ve created support ticket SUP-738D12823D0C. To reach a support agent, send your details using the support form below; creating the ticket alone does not notify them.",
-        "created_at": "2026-11-02T08:09:59.929336Z"
+        "text": "Could you please provide the order reference (order ID) you’d like to track?",
+        "created_at": "2026-11-09T04:38:15.683337Z"
       },
       {
         "role": "user",
-        "text": "i want to return this other product from your store but i need to know about your return policy",
-        "created_at": "2026-11-02T08:10:57.215957Z"
+        "text": "ORD-1001",
+        "created_at": "2026-11-09T04:38:24.128735Z"
       },
       {
         "role": "assistant",
-        "text": "Please provide a product reference (for example, PROD-001) so I can check current product information alongside the approved policy.",
-        "created_at": "2026-11-02T08:10:57.215957Z"
-      },
-      {
-        "role": "user",
-        "text": "for  PROD-002",
-        "created_at": "2026-11-02T08:11:14.984558Z"
-      },
-      {
-        "role": "assistant",
-        "text": "Hi there! I’m here to help with this store’s orders, deliveries, payments, returns, products, and policies. I can’t answer general questions outside those topics, but I’d be glad to help with a store-related question.",
-        "created_at": "2026-11-02T08:11:14.984558Z"
-      },
-      {
-        "role": "user",
-        "text": "i want to return this other product PROD-002 from your store but i need to know about your return policy",
-        "created_at": "2026-11-02T08:11:45.869768Z"
-      },
-      {
-        "role": "assistant",
-        "text": "Policy information: I couldn’t find enough information in the approved policy documents to verify that. Please contact support for help.\n\nCurrent product information: Demo desk lamp is out of stock (0 available) at 32.0 ZAR. A fictional adjustable desk lamp for testing customer support tools. Warranty: Fictional demo warranty: two years.\n\nI’ve created support ticket SUP-DCF3A2A241B3. To reach a support agent, send your details using the support form below; creating the ticket alone does not notify them.",
-        "created_at": "2026-11-02T08:11:45.869768Z"
+        "text": "Your order **ORD-1001** is currently **cancelled**. If you have any further questions or need assistance with a new order, feel free to let me know.",
+        "created_at": "2026-11-09T04:38:24.128735Z"
       }
     ],
     "first_user_message": {
       "role": "user",
-      "text": "can you please contact customer support i have a complaint",
-      "created_at": "2026-11-02T08:09:59.929336Z"
+      "text": "I need to track an order",
+      "created_at": "2026-11-09T04:38:15.683337Z"
+    },
+    "last_order_id": "ORD-1001",
+    "created_at": "2026-11-09T04:38:15.683337Z",
+    "updated_at": "2026-11-09T04:38:24.129033Z",
+    "expires_at": "2026-11-09T05:08:24.129033Z"
+  },
+  {
+    "conversation_id": "4ebd71a1-5da5-4faa-9b62-7206698628cb",
+    "owner_id": "CUS-DEMO-001",
+    "turns": [
+      {
+        "role": "user",
+        "text": "I need help finding a product",
+        "created_at": "2026-11-09T04:38:31.850107Z"
+      },
+      {
+        "role": "assistant",
+        "text": "Could you tell me the name or a brief description of the product you’re looking for?",
+        "created_at": "2026-11-09T04:38:31.850107Z"
+      }
+    ],
+    "first_user_message": {
+      "role": "user",
+      "text": "I need help finding a product",
+      "created_at": "2026-11-09T04:38:31.850107Z"
     },
     "last_order_id": null,
-    "created_at": "2026-11-02T08:09:59.929336Z",
-    "updated_at": "2026-11-02T08:11:45.870023Z",
-    "expires_at": "2026-11-02T08:41:45.870023Z"
+    "created_at": "2026-11-09T04:38:31.850107Z",
+    "updated_at": "2026-11-09T04:38:31.850302Z",
+    "expires_at": "2026-11-09T05:08:31.850302Z"
+  },
+  {
+    "conversation_id": "e7521e47-fb18-453e-b04f-a3bddbfeea10",
+    "owner_id": "CUS-DEMO-001",
+    "turns": [
+      {
+        "role": "user",
+        "text": "What is your returns and refunds policy?",
+        "created_at": "2026-11-09T04:38:43.560674Z"
+      },
+      {
+        "role": "assistant",
+        "text": "**Returns & Refunds Overview (based on our approved policy – *Policies.pdf*)**\n\n| Topic | What the policy says |\n|-------|----------------------|\n| **Return window** | You can return most items **within 30 days of receipt** as long as they are in new, unused condition. *(source: “How Long Do I Have to Make a Return?”)* |\n| **What you can return** | • **Apparel, shoes, bags & luggage** – must be unworn, with original tags, branded boxes and all accessories.<br>• **Electronics** – must be sealed, non‑activated, with all manuals, accessories, any free gifts, and personal data erased.<br>*(source: “What Items can I return?”)* |\n| **What cannot be returned** | • Items marked with a **non‑returnable sticker**.<br>• Certain apparel such as **bodysuits, lingerie, jewelry, underwear** (except scarves & bags).<br>• **Cosmetics** that are damaged or opened.<br>*(source: “What Items can’t I return?”)* |\n| **How to start a return** | 1. Sign into your Customer Support account.<br>2. Open the “Customer Support” chat.<br>3. Ask the agent about returns – they’ll guide you through the proper procedure.<br>4. You may combine items from different orders in **one package** as long as each meets the return conditions. *(source: “How to return Items?”)* |\n| **Refund method** | Refunds are sent to your **Kgomo Mart wallet** or the **original form of payment** you chose. If you didn’t select a method, we use the one recorded in your refund request. Gift‑card purchases are refunded as gift cards. *(source: “What is the refund method?”)* |\n| **Refund timing** | After the refund is processed you’ll receive an email/SMS notification. The exact timing depends on the refund method (wallet, card, or gift‑card). *(source: “When will I receive my refund?”)* |\n| **Expired or invalid cards** | For security reasons refunds go back to the **original card**. If that card is expired or locked, you’ll need to contact your card issuer or bank; they can still receive the funds and transfer them to an active",
+        "created_at": "2026-11-09T04:38:43.560674Z"
+      }
+    ],
+    "first_user_message": {
+      "role": "user",
+      "text": "What is your returns and refunds policy?",
+      "created_at": "2026-11-09T04:38:43.560674Z"
+    },
+    "last_order_id": null,
+    "created_at": "2026-11-09T04:38:43.560674Z",
+    "updated_at": "2026-11-09T04:38:43.561734Z",
+    "expires_at": "2026-11-09T05:08:43.561734Z"
   }
 ]

@@ -119,6 +119,35 @@ export async function getAdminTicket(ticketId, authorizationToken) {
   );
 }
 
+export async function getAdminTicketAttachment(
+  ticketId,
+  attachmentId,
+  authorizationToken,
+) {
+  let response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    response = await fetch(
+      `/api/admin/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(attachmentId)}`,
+      {
+        headers: { Authorization: `Bearer ${authorizationToken}` },
+        signal: controller.signal,
+      },
+    );
+  } catch {
+    const error = new Error(
+      "We could not load the ticket attachment. Please try again.",
+    );
+    error.retryable = true;
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!response.ok) throw await responseError(response);
+  return response.blob();
+}
+
 export async function getSupportAgents(authorizationToken) {
   return authorizedJson("/api/admin/agents", authorizationToken);
 }
@@ -241,6 +270,7 @@ export async function submitDamageReport({
   );
   if (
     typeof data.report_id !== "string" ||
+    typeof data.ticket_id !== "string" ||
     data.order_id !== orderId ||
     typeof data.created !== "boolean" ||
     typeof data.message !== "string"

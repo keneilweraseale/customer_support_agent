@@ -1,3 +1,4 @@
+import logging
 import math
 import re
 from dataclasses import dataclass
@@ -6,7 +7,10 @@ from typing import Protocol
 from rank_bm25 import BM25Okapi
 
 from app.rag.providers import EmbeddingError, TextEmbedder
+from app.storage.json_store import DataStoreError
 from app.storage.models import PolicyChunk, PolicyDocument
+
+logger = logging.getLogger(__name__)
 
 RRF_K = 60
 DEFAULT_TOP_K = 5
@@ -127,21 +131,28 @@ class HybridPolicyRetriever:
                     document.document_id: document.updated_at.isoformat()
                     for document in documents.values()
                 }
-                indexed_scores = {
-                    chunk.chunk_id: score
-                    for chunk, score in vector_search(
-                        query_vector,
-                        self._embedder.model_name,
-                        self._top_k,
-                        document_versions,
+                try:
+                    indexed_scores = {
+                        chunk.chunk_id: score
+                        for chunk, score in vector_search(
+                            query_vector,
+                            self._embedder.model_name,
+                            self._top_k,
+                            document_versions,
+                        )
+                    }
+                except DataStoreError:
+                    logger.exception(
+                        "MongoDB Atlas vector search failed; continuing with BM25."
                     )
-                }
-                valid_vector_scores = {
-                    index: indexed_scores[chunk.chunk_id]
-                    for index, chunk in enumerate(approved_chunks)
-                    if chunk.chunk_id in indexed_scores
-                    and chunk.embedding_model == self._embedder.model_name
-                }
+                    vector_error = "vector_search_unavailable"
+                else:
+                    valid_vector_scores = {
+                        index: indexed_scores[chunk.chunk_id]
+                        for index, chunk in enumerate(approved_chunks)
+                        if chunk.chunk_id in indexed_scores
+                        and chunk.embedding_model == self._embedder.model_name
+                    }
             else:
                 valid_vector_scores = {
                     index: score

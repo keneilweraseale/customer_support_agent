@@ -1,13 +1,17 @@
+import argparse
 import base64
 import hashlib
 import hmac
 import re
 import secrets
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
+from getpass import getpass
 from threading import RLock
 from typing import Literal
 
 from app.storage.factory import repository_from_environment
+from app.storage.json_store import DataStoreError
 from app.storage.models import CustomerAccount, SupportAgentAccount
 from app.storage.repository import SupportRepository
 
@@ -170,6 +174,38 @@ class DemoAuthorizationService:
 
 
 demo_authorization_service = DemoAuthorizationService(repository_from_environment())
+
+
+def provision_account_via_cli(
+    *,
+    description: str,
+    identifier_flag: str,
+    success_message: str,
+    create_account: Callable[[DemoAuthorizationService, str, str, str], None],
+) -> None:
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument(f"--{identifier_flag}", required=True)
+    parser.add_argument("--email", required=True)
+    arguments = parser.parse_args()
+
+    password = getpass("Password (12-256 characters): ")
+    confirmation = getpass("Confirm password: ")
+    if password != confirmation:
+        parser.error("Passwords do not match.")
+
+    service = DemoAuthorizationService(repository_from_environment())
+    identifier_name = identifier_flag.replace("-", "_")
+    try:
+        create_account(
+            service,
+            arguments.email,
+            password,
+            getattr(arguments, identifier_name),
+        )
+    except (DataStoreError, ValueError) as exc:
+        parser.error(str(exc))
+
+    print(success_message)
 
 
 def _hash_password(password: str) -> str:

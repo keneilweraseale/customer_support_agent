@@ -60,10 +60,11 @@ flowchart TD
 2. React state manages the visible conversation; the frontend sends the message, `conversation_id`, and relevant recent context to the Python API as JSON. The backend is responsible for trusted memory storage and retrieval.
 3. The backend cleans and normalises the message, then loads only the short-term memory relevant to that conversation. For a cancellation, it also checks the order/action records and writes a durable cancellation record after the outcome is known.
 4. The backend validates the request and checks whether the requested information/action requires customer verification.
-5. The agent chooses the appropriate path:
-   - **RAG** for policies and approved guidance.
-   - **LangChain tool** for current order, delivery, payment, stock, or review data.
-   - **RAG + tools** for questions needing both policy context and current data.
+5. The controlled router selects the policy or support path. For eligible,
+   read-only data questions, a bounded Groq function-calling loop chooses and
+   invokes the existing LangChain `StructuredTool` objects. Policy questions
+   continue through the separate approved-policy RAG pipeline. Mixed questions
+   can combine both paths.
 6. RAG retrieves relevant chunks using **vector similarity and BM25 keyword search**.
 7. The generation step creates an answer from retrieved evidence and/or tool results. If evidence is missing, the agent must say so rather than inventing an answer.
 8. FastAPI returns a JSON response. The chat UI displays the answer and any next action, such as asking the customer to confirm a cancellation.
@@ -80,7 +81,8 @@ flowchart TD
 | Keyword retrieval | **BM25** (`rank-bm25`) | Finds relevant chunks using keyword matching |
 | Vector retrieval | Cosine similarity over Mistral embeddings | Finds chunks semantically similar to the query |
 | Hybrid ranking | Reciprocal Rank Fusion (RRF) | Combines vector and BM25 ranked lists |
-| Agent/tools | LangChain | Routes requests and exposes order, delivery, payment, stock, and review tools |
+| Agent/tool definitions | LangChain Core `StructuredTool` | Validates and executes order, delivery, payment, stock, and review lookups |
+| Tool selection | Groq function calling | Selects read-only tools in a bounded loop; Python enforces the allowlist and authorization |
 | API backend | Python + FastAPI | Validates requests and returns JSON |
 | Demo storage | JSON files | Stores operational records, source documents, chunks, metadata, and embeddings |
 | Future storage | MongoDB | Persistent records and policy chunks; vector index configuration is chosen during migration |
@@ -99,7 +101,7 @@ flowchart TD
 |---|---|---|
 | Frontend | React + Vite | Component-based chat interface, message state, input, confirmation prompts |
 | API | Python + FastAPI | HTTP endpoints, validation, error responses |
-| Agent | LangChain | Tool definitions and tool/agent orchestration |
+| Agent | Groq function calling + LangChain Core | Bounded tool selection/execution over `StructuredTool` definitions; no cancellation or state-changing tools are exposed |
 | RAG | Mistral `mistral-embed`, vector similarity, BM25, Groq generation | Find approved policy evidence and generate grounded answers |
 | Demo storage | JSON files | Orders, delivery updates, payments, products, reviews, policy chunks and metadata |
 | Future storage | MongoDB | Persistent structured records and policy/chunk storage; vector search configuration to be chosen during migration |
@@ -262,7 +264,9 @@ customer-support-ai-agent/
 
 ### 5.1 Routing logic
 
-Use intent routing as a controlled decision:
+Use intent routing as a controlled decision. For an eligible read-only request,
+the LLM may select one or more tools from the application allowlist, but Python
+continues to enforce authorization, tool arguments, and action boundaries:
 
 - Policy/how-to question → RAG.
 - Order/delivery/payment/inventory lookup → corresponding LangChain tool.
@@ -274,7 +278,7 @@ Do not let the LLM alone decide whether a cancellation is allowed. Enforce autho
 
 ### 5.2 LangChain tools
 
-Define small, clearly named tools, for example:
+Define small, clearly named LangChain `StructuredTool` objects, for example:
 
 - `get_order_status(order_id, customer_id)`
 - `get_delivery_status(order_id, customer_id)`
@@ -284,7 +288,12 @@ Define small, clearly named tools, for example:
 - `check_product_availability(product_id)`
 - `search_customer_reviews(product_id or query)`
 
-Tool names and arguments are examples for implementation, not existing endpoints. Tools should validate input, return structured results, handle missing records, and avoid returning unrelated customer data. The cancellation tool must only run after explicit confirmation and a server-side eligibility/authorization recheck.
+Tools validate input, return structured results, handle missing records, and
+avoid returning unrelated customer data. Only read-only order, delivery,
+payment, product, and review tools are available to the model. The cancellation
+eligibility and cancellation tools remain outside the model's allowlist;
+cancellation requires explicit confirmation and a server-side
+eligibility/authorization recheck.
 
 Customers log in with administrator-provisioned email/password accounts. Passwords are stored as salted scrypt hashes; an authenticated token maps to exactly one customer ID and is required for private order and cancellation operations. Provision demo accounts only for fictional records and use a production identity/session system before handling real customer data.
 
@@ -632,7 +641,10 @@ For each cancellation request, record the reason supplied by the customer (or a 
 - **Exit check:** policy questions return supported answers; unknown questions receive a transparent fallback.
 
 ### Phase 6 — Agent routing and combined answers
-- Route policy questions to RAG and current-data questions to tools.
+- Route policy questions to approved-evidence RAG; use a bounded Groq
+  function-calling loop to select read-only LangChain tools for current data.
+- Keep authorization and state-changing workflows enforced in Python; require
+  explicit confirmation for cancellation.
 - Support questions needing both RAG and tools.
 - Add safe handling for missing data, failed tools, and ambiguous requests.
 - **Exit check:** tests verify correct routing and that the answer uses the relevant retrieved evidence/tool result.

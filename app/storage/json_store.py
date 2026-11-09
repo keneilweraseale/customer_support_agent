@@ -454,6 +454,30 @@ class JsonRepository(SupportRepository):
 
             return report, True
 
+    def get_damage_report_image(self, report_id: str) -> bytes | None:
+        with self._write_lock:
+            report = next(
+                (
+                    item
+                    for item in self._read_optional_records(
+                        "damage_reports.json",
+                        DamageReport,
+                        "report_id",
+                    )
+                    if item.report_id == report_id
+                ),
+                None,
+            )
+            if report is None:
+                return None
+            image_path = self.data_directory / "damage_report_images" / report.image_filename
+            try:
+                return image_path.read_bytes()
+            except FileNotFoundError:
+                return None
+            except OSError as exc:
+                raise DataStoreError("Could not read damage report image.") from exc
+
     def get_customer_accounts(self) -> list[CustomerAccount]:
         with self._write_lock:
             accounts = self._read_optional_records(

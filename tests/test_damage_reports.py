@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api import damage_reports
+from app.api import admin_tickets, damage_reports
 from app.main import app
 from app.storage.json_store import DataStoreError, JsonRepository
 
@@ -19,6 +19,7 @@ def report_repository(monkeypatch, tmp_path):
     (tmp_path / "orders.json").write_bytes(source_orders.read_bytes())
     repository = JsonRepository(tmp_path)
     monkeypatch.setattr(damage_reports, "damage_repository", repository)
+    monkeypatch.setattr(admin_tickets, "support_repository", repository)
     return repository
 
 
@@ -58,7 +59,10 @@ def test_damage_report_is_saved_for_authenticated_order_owner(report_repository)
     result = response.json()
     assert result["created"] is True
     assert result["order_id"] == "ORD-1001"
-    assert result["message"] == "Your damage report was submitted for review."
+    assert result["ticket_id"] == f"DAMAGE-{result['report_id']}"
+    assert result["message"] == (
+        f"Your damage report was submitted. Support ticket {result['ticket_id']} is open."
+    )
     records = json.loads((report_repository.data_directory / "damage_reports.json").read_text())
     assert len(records) == 1
     stored_image = (
@@ -69,6 +73,66 @@ def test_damage_report_is_saved_for_authenticated_order_owner(report_repository)
     assert stored_image.read_bytes() == JPEG_BYTES
     assert "image_data" not in records[0]
     assert "customer_id" not in result
+    ticket = report_repository.get_support_ticket(result["ticket_id"])
+    assert ticket is not None
+    assert ticket.status == "open"
+    assert ticket.priority == "high"
+    assert ticket.customer_message == "The corner is damaged."
+    assert ticket.messages[0].text == "The corner is damaged."
+    assert ticket.attachments[0].attachment_id == result["report_id"]
+    assert report_repository.get_damage_report_image(result["report_id"]) == JPEG_BYTES
+
+
+def test_damage_report_ticket_and_image_are_available_to_support_agents(
+    monkeypatch,
+    report_repository,
+):
+    monkeypatch.setattr(
+        admin_tickets.demo_authorization_service,
+        "resolve_support_agent",
+        lambda token: "STAFF-001" if token == "valid-agent-token" else None,
+    )
+    submitted = submit()
+    ticket_id = submitted.json()["ticket_id"]
+    attachment_id = submitted.json()["report_id"]
+
+    unauthorized = client.get(
+        f"/api/admin/tickets/{ticket_id}/attachments/{attachment_id}",
+    )
+    detail = client.get(
+        f"/api/admin/tickets/{ticket_id}",
+        headers={"Authorization": "Bearer valid-agent-token"},
+    )
+    ticket_list = client.get(
+        "/api/admin/tickets",
+        headers={"Authorization": "Bearer valid-agent-token"},
+    )
+    image = client.get(
+        f"/api/admin/tickets/{ticket_id}/attachments/{attachment_id}",
+        headers={"Authorization": "Bearer valid-agent-token"},
+    )
+
+    assert unauthorized.status_code == 401
+    assert detail.status_code == 200
+    assert detail.json()["status"] == "open"
+    assert detail.json()["priority"] == "high"
+    assert detail.json()["description"] == "The corner is damaged."
+    assert detail.json()["attachments"] == [
+        {
+            "attachment_id": attachment_id,
+            "filename": f"{attachment_id}.jpg",
+            "content_type": "image/jpeg",
+        }
+    ]
+    assert ticket_list.status_code == 200
+    assert ticket_id in {
+        ticket["ticket_id"] for ticket in ticket_list.json()["tickets"]
+    }
+    assert image.status_code == 200
+    assert image.content == JPEG_BYTES
+    assert image.headers["content-type"] == "image/jpeg"
+    assert image.headers["cache-control"] == "private, no-store"
+    assert report_repository.get_support_ticket(ticket_id) is not None
 
 
 def test_same_idempotency_key_returns_original_report(report_repository):
@@ -81,6 +145,34 @@ def test_same_idempotency_key_returns_original_report(report_repository):
     assert repeated.json()["report_id"] == first.json()["report_id"]
     records = json.loads((report_repository.data_directory / "damage_reports.json").read_text())
     assert len(records) == 1
+
+
+def test_ticket_creation_failure_is_reported_and_retry_opens_same_ticket(
+    monkeypatch,
+    report_repository,
+):
+    append_ticket = report_repository.append_support_ticket
+    calls = 0
+
+    def fail_once(ticket):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise DataStoreError("simulated ticket storage failure")
+        append_ticket(ticket)
+
+    monkeypatch.setattr(report_repository, "append_support_ticket", fail_once)
+
+    failed_response = submit()
+    retry_response = submit()
+
+    assert failed_response.status_code == 503
+    assert "ticket could not be opened" in failed_response.json()["error"]["message"]
+    assert retry_response.status_code == 201
+    assert retry_response.json()["created"] is False
+    assert retry_response.json()["ticket_id"].startswith("DAMAGE-")
+    assert "was submitted" in retry_response.json()["message"]
+    assert len(report_repository.get_support_tickets()) == 1
 
 
 def test_reusing_idempotency_key_for_different_image_is_rejected(report_repository):
@@ -111,6 +203,18 @@ def test_missing_order_reference_is_rejected(report_repository):
     response = submit(body)
 
     assert response.status_code == 422
+
+
+def test_damage_report_requires_a_message(report_repository):
+    body = request_body()
+    body.pop("description")
+
+    missing = submit(body)
+    blank = submit(request_body(description="   "), key="damage-report-key-0002")
+
+    assert missing.status_code == 422
+    assert blank.status_code == 422
+    assert report_repository.get_support_tickets() == []
 
 
 @pytest.mark.parametrize(

@@ -1,3 +1,5 @@
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,13 +21,30 @@ from app.api.health import router as health_router
 from app.api.orders import router as orders_router
 from app.evaluation.router import router as evaluation_router
 from app.evaluation.middleware import EvaluationRequestSizeMiddleware
+from app.storage.factory import repository_from_environment
+from app.storage.migrate_json_to_mongodb import migrate_json_datasets
+from app.storage.mongodb import MongoRepository
 
 load_dotenv(
     dotenv_path=Path(__file__).resolve().parents[1] / ".env",
     override=False,
 )
 
-app = FastAPI(title="Customer Support AI Agent", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+    repository = repository_from_environment()
+    if isinstance(repository, MongoRepository):
+        migrate_json_datasets(repository, only_empty_collections=True)
+        repository.validate_references()
+    yield
+
+
+app = FastAPI(
+    title="Customer Support AI Agent",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 app.add_middleware(EvaluationRequestSizeMiddleware)
 
 

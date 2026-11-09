@@ -6,6 +6,7 @@ import {
   getAdminCategories,
   getAdminDashboardStats,
   getAdminTicket,
+  getAdminTicketAttachment,
   getAdminTickets,
   getSupportAgents,
   loginSupportAgent,
@@ -81,6 +82,9 @@ export default function AdminDashboard() {
   const [loadError, setLoadError] = useState("");
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [actionError, setActionError] = useState("");
+  const [attachmentUrls, setAttachmentUrls] = useState([]);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [isLoadingAttachments, setIsLoadingAttachments] = useState(false);
   const [notice, setNotice] = useState("");
   const [nextStatus, setNextStatus] = useState("open");
   const [statusNote, setStatusNote] = useState("");
@@ -212,6 +216,52 @@ export default function AdminDashboard() {
     setNoteDraft("");
     setActionError("");
   }, [selectedTicket?.ticket_id]);
+
+  useEffect(() => {
+    let active = true;
+    const objectUrls = [];
+    const attachments = selectedTicket?.attachments ?? [];
+    if (!authorizationToken || !selectedTicket?.ticket_id || !attachments.length) {
+      setAttachmentUrls([]);
+      setAttachmentError("");
+      setIsLoadingAttachments(false);
+      return () => {};
+    }
+
+    setAttachmentError("");
+    setIsLoadingAttachments(true);
+    async function loadAttachments() {
+      try {
+        const loadedAttachments = await Promise.all(
+          attachments.map(async (attachment) => {
+            const blob = await getAdminTicketAttachment(
+              selectedTicket.ticket_id,
+              attachment.attachment_id,
+              authorizationToken,
+            );
+            if (!active) return null;
+            const url = URL.createObjectURL(blob);
+            objectUrls.push(url);
+            return { ...attachment, url };
+          }),
+        );
+        if (active) {
+          setAttachmentUrls(loadedAttachments);
+          setIsLoadingAttachments(false);
+        }
+      } catch (error) {
+        if (active) {
+          setAttachmentError(error.message);
+          setIsLoadingAttachments(false);
+        }
+      }
+    }
+    void loadAttachments();
+    return () => {
+      active = false;
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [authorizationToken, selectedTicket?.ticket_id]);
 
   async function openTicket(ticketId) {
     setActionError("");
@@ -430,6 +480,7 @@ export default function AdminDashboard() {
             <header className="admin-detail-header"><div><p className="admin-kicker">TICKET MANAGEMENT</p><h2>{selectedTicket.ticket_id}</h2></div><button aria-label="Close ticket details" className="admin-close" onClick={() => setSelectedTicket(null)} type="button">×</button></header>
             <div className="admin-detail-scroll">
               <div className="admin-detail-title"><StatusBadge status={selectedTicket.status} /><PriorityLabel priority={selectedTicket.priority} /><h3>{selectedTicket.subject}</h3><p>{selectedTicket.description}</p></div>
+              {selectedTicket.attachments?.length > 0 && <section aria-label="Customer attachments" className="admin-attachments"><h3>Customer attachments</h3>{isLoadingAttachments && <p className="admin-muted">Loading attachments…</p>}{attachmentError && <p className="admin-error" role="alert">{attachmentError}</p>}<div>{attachmentUrls.map((attachment) => <figure key={attachment.attachment_id}><a href={attachment.url} rel="noreferrer" target="_blank"><img alt={`Customer attachment ${attachment.filename}`} src={attachment.url} /></a><figcaption>{attachment.filename}</figcaption></figure>)}</div></section>}
               <dl className="admin-ticket-meta"><div><dt>Customer</dt><dd>{selectedTicket.customer_email || selectedTicket.customer_id || "Unknown"}</dd></div><div><dt>Customer ID</dt><dd>{selectedTicket.customer_id || "Not available"}</dd></div><div><dt>Category</dt><dd>{selectedTicket.category}</dd></div><div><dt>Created</dt><dd>{formatDate(selectedTicket.created_at)}</dd></div><div><dt>Last updated</dt><dd>{formatDate(selectedTicket.updated_at)}</dd></div></dl>
               <div className="admin-action-grid">
                 <label>Priority<select disabled={busy} onChange={(event) => void performAction(() => updateAdminTicketPriority(selectedTicket.ticket_id, event.target.value, authorizationToken), "Priority updated.")} value={selectedTicket.priority}>{priorityOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>

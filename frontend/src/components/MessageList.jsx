@@ -52,7 +52,9 @@ export default function MessageList({
                   : styles.assistantBubble),
               }}
             >
-              {message.text}
+              {message.role === "assistant"
+                ? renderAssistantText(message.text)
+                : message.text}
 
               {message.actions?.some(
                 (action) =>
@@ -176,6 +178,128 @@ export default function MessageList({
       </div>
     </div>
   );
+}
+
+function renderAssistantText(text) {
+  const lines = text.split("\n");
+  const content = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const header = parseMarkdownTableRow(lines[index]);
+    const separator = lines[index + 1]
+      ? parseMarkdownTableRow(lines[index + 1])
+      : null;
+
+    if (
+      header
+      && separator
+      && header.length === separator.length
+      && separator.every((cell) => /^:?-{3,}:?$/.test(cell.trim()))
+    ) {
+      const alignments = separator.map((cell) => {
+        const trimmed = cell.trim();
+        if (trimmed.startsWith(":") && trimmed.endsWith(":")) return "center";
+        if (trimmed.endsWith(":")) return "right";
+        return "left";
+      });
+      const rows = [];
+      index += 2;
+
+      while (index < lines.length && lines[index].trim() && lines[index].includes("|")) {
+        rows.push(parseMarkdownTableRow(lines[index]) ?? []);
+        index += 1;
+      }
+
+      content.push(
+        <div key={`table-${index}`} style={styles.tableWrapper}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                {header.map((cell, cellIndex) => (
+                  <th
+                    key={cellIndex}
+                    scope="col"
+                    style={{
+                      ...styles.tableCell,
+                      ...styles.tableHeaderCell,
+                      textAlign: alignments[cellIndex],
+                    }}
+                  >
+                    {renderInlineAssistantText(cell)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {header.map((_, cellIndex) => (
+                    <td
+                      key={cellIndex}
+                      style={{
+                        ...styles.tableCell,
+                        textAlign: alignments[cellIndex],
+                      }}
+                    >
+                      {renderInlineAssistantText(row[cellIndex] ?? "")}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      index -= 1;
+      continue;
+    }
+
+    content.push(
+      <span key={`line-${index}`}>
+        {renderInlineAssistantText(lines[index])}
+        {index < lines.length - 1 && <br />}
+      </span>,
+    );
+  }
+
+  return content;
+}
+
+function parseMarkdownTableRow(line) {
+  if (!line.includes("|")) return null;
+  const cells = [];
+  let cell = "";
+  const trimmedLine = line.trim();
+
+  for (let index = 0; index < trimmedLine.length; index += 1) {
+    const character = trimmedLine[index];
+    if (character === "\\" && trimmedLine[index + 1] === "|") {
+      cell += "|";
+      index += 1;
+    } else if (character === "|") {
+      cells.push(cell.trim());
+      cell = "";
+    } else {
+      cell += character;
+    }
+  }
+  cells.push(cell.trim());
+
+  if (trimmedLine.startsWith("|")) cells.shift();
+  if (trimmedLine.endsWith("|")) cells.pop();
+  return cells;
+}
+
+function renderInlineAssistantText(text) {
+  return text.split(/(\*\*[^*]+\*\*|__[^_]+__)/g).map((part, index) => {
+    if (
+      (part.startsWith("**") && part.endsWith("**"))
+      || (part.startsWith("__") && part.endsWith("__"))
+    ) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
 }
 
 function SupportTicketActions({ action, disabled, messageId, onSend }) {
@@ -312,6 +436,30 @@ const styles = {
     borderBottomLeftRadius: 6,
     boxShadow: "0 4px 14px rgba(30, 65, 68, .035)",
     color: "var(--color-text)",
+  },
+
+  tableWrapper: {
+    margin: "10px 0",
+    maxWidth: "100%",
+    overflowX: "auto",
+  },
+
+  table: {
+    borderCollapse: "collapse",
+    fontSize: "0.95em",
+    minWidth: "100%",
+    textAlign: "left",
+  },
+
+  tableCell: {
+    border: "1px solid #e2e8e8",
+    padding: "7px 10px",
+    verticalAlign: "top",
+  },
+
+  tableHeaderCell: {
+    background: "#f4f8f8",
+    fontWeight: 700,
   },
 
   status: {

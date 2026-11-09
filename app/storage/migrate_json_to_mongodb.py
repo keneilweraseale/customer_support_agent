@@ -89,9 +89,19 @@ def _record_document(
     return document
 
 
-def migrate_json_datasets(repository: MongoRepository) -> dict[str, tuple[int, int]]:
+def migrate_json_datasets(
+    repository: MongoRepository,
+    *,
+    only_empty_collections: bool = False,
+) -> dict[str, tuple[int, int]]:
     totals: dict[str, tuple[int, int]] = {}
     for filename, collection_key, model, identifier_field in MIGRATION_DATASETS:
+        if (
+            only_empty_collections
+            and not repository.migration_collection_is_empty(collection_key)
+        ):
+            totals[COLLECTIONS[collection_key]] = (0, 0)
+            continue
         imported = 0
         existing_count = 0
         for record in _read_dataset(filename, model):

@@ -608,6 +608,43 @@
 .admin-detail-title p { color: #53647a; font-size: 12px; line-height: 1.65; margin: 0; white-space: pre-wrap; }
 .admin-detail-title .admin-priority { margin-left: 8px; }
 
+.admin-attachments {
+  border-bottom: 1px solid var(--admin-line);
+  padding: 14px 0;
+}
+
+.admin-attachments h3 {
+  color: #344860;
+  font-size: 12px;
+  margin: 0 0 10px;
+}
+
+.admin-attachments > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.admin-attachments figure {
+  margin: 0;
+  max-width: 100%;
+}
+
+.admin-attachments img {
+  border: 1px solid var(--admin-line);
+  border-radius: 6px;
+  display: block;
+  max-height: 240px;
+  max-width: min(100%, 360px);
+  object-fit: contain;
+}
+
+.admin-attachments figcaption {
+  color: var(--admin-muted);
+  font-size: 10px;
+  margin-top: 5px;
+}
+
 .admin-ticket-meta {
   display: grid;
   gap: 12px 20px;
